@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { getSql } from "./db";
 import type {
   ChampionStat,
   DashboardData,
@@ -13,6 +13,7 @@ const MARTS = "lol_marts";
 
 /** Resumen global sobre todas las partidas (para las KPI cards). */
 export async function getSummary(): Promise<Summary | null> {
+  const sql = getSql();
   const rows = await sql<Summary[]>`
     select
       count(*)::int                                   as total_games,
@@ -32,6 +33,7 @@ export async function getSummary(): Promise<Summary | null> {
 export async function getMatchPerformance(
   limit = 30,
 ): Promise<MatchPerformance[]> {
+  const sql = getSql();
   return sql<MatchPerformance[]>`
     select
       match_id,
@@ -60,6 +62,7 @@ export async function getMatchPerformance(
 
 /** Stats agregadas por campeón (solo ranked, según el mart). */
 export async function getChampionStats(limit = 15): Promise<ChampionStat[]> {
+  const sql = getSql();
   return sql<ChampionStat[]>`
     select
       champion_name,
@@ -87,6 +90,7 @@ export async function getChampionStats(limit = 15): Promise<ChampionStat[]> {
 
 /** Early game de las últimas N partidas, ordenado cronológicamente. */
 export async function getEarlyGame(limit = 30): Promise<EarlyGame[]> {
+  const sql = getSql();
   return sql<EarlyGame[]>`
     select
       e.match_id,
@@ -111,6 +115,7 @@ export async function getEarlyGame(limit = 30): Promise<EarlyGame[]> {
 
 /** Tendencias semanales (ranked), de la más vieja a la más nueva. */
 export async function getPlayerTrends(): Promise<PlayerTrend[]> {
+  const sql = getSql();
   return sql<PlayerTrend[]>`
     select
       week_start::text                      as week_start,

@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ward-eye · web
 
-## Getting Started
+Dashboard Next.js que consume los marts de dbt (`lol_marts.*`) desde Supabase,
+los grafica con Apache ECharts y genera coaching automático vía un endpoint
+LLM OpenAI-compatible (Groq por defecto, swappeable a Claude/OpenAI por env).
 
-First, run the development server:
+## Arquitectura
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+app/page.tsx ──(server)──► lib/queries.ts ──► lib/db.ts ──► Postgres (lol_marts)
+     │                                                          (pooler Supabase)
+     ├─ components/Kpis, charts/* (ECharts, client)
+     └─ components/CoachingPanel (client)
+              └─ POST /api/coaching ──► lib/coach.ts ──► LLM (OpenAI SDK → Groq)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Datos**: server-side con el driver `postgres`. Las credenciales nunca llegan
+  al cliente (`server-only`).
+- **Gráficos**: `echarts` envuelto en `components/EChart.tsx` (client component;
+  ECharts se importa dinámicamente para no romper el SSR).
+- **Coaching**: SDK `openai` apuntando a `LLM_BASE_URL`. Cambiar de proveedor es
+  solo cambiar variables de entorno.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env.local   # completá DB_PASSWORD y LLM_API_KEY (Groq)
+npm install
+npm run dev                  # http://localhost:3000
+```
 
-## Learn More
+Obtené una API key gratis en https://console.groq.com/keys
 
-To learn more about Next.js, take a look at the following resources:
+## Variables de entorno
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable       | Descripción                                            |
+| -------------- | ------------------------------------------------------ |
+| `DB_HOST`      | Host del pooler de Supabase                            |
+| `DB_PORT`      | 5432 (session) o 6543 (transaction)                    |
+| `DB_NAME`      | `postgres`                                             |
+| `DB_USER`      | `postgres.<project_ref>`                               |
+| `DB_PASSWORD`  | Password de la DB                                      |
+| `LLM_BASE_URL` | Endpoint OpenAI-compatible (default Groq)              |
+| `LLM_API_KEY`  | API key del proveedor                                  |
+| `LLM_MODEL`    | Modelo (default `llama-3.3-70b-versatile`)             |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Swappear a Claude
 
-## Deploy on Vercel
+```env
+LLM_BASE_URL=https://api.anthropic.com/v1/
+LLM_API_KEY=sk-ant-...
+LLM_MODEL=claude-sonnet-4-6
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> Anthropic expone un endpoint OpenAI-compatible. Alternativamente, reemplazá
+> `lib/coach.ts` por el SDK `@anthropic-ai/sdk`.

@@ -1,65 +1,92 @@
-import Image from "next/image";
+import { getDashboardData } from "@/lib/queries";
+import { Card } from "@/components/Card";
+import { Kpis } from "@/components/Kpis";
+import { MatchesTable } from "@/components/MatchesTable";
+import { CoachingPanel } from "@/components/CoachingPanel";
+import TrendsChart from "@/components/charts/TrendsChart";
+import TrendsResourcesChart from "@/components/charts/TrendsResourcesChart";
+import KdaTimelineChart from "@/components/charts/KdaTimelineChart";
+import ImpactScatterChart from "@/components/charts/ImpactScatterChart";
+import ChampionWinrateChart from "@/components/charts/ChampionWinrateChart";
+import EarlyGameChart from "@/components/charts/EarlyGameChart";
 
-export default function Home() {
+// Consulta DB en cada request; nunca prerenderizar con datos viejos.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const data = await getDashboardData();
+  const hasData = data.matches.length > 0;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-zinc-950 text-zinc-100">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <header className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight">ward-eye</h1>
+          <p className="text-sm text-zinc-500">
+            Dashboard de partidas de League of Legends + coaching automático
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        </header>
+
+        {data.error && (
+          <div className="mb-6 rounded-xl border border-amber-900 bg-amber-950/40 p-4 text-sm text-amber-300">
+            <p className="font-semibold">No se pudieron cargar los datos.</p>
+            <p className="mt-1 text-amber-400/80">{data.error}</p>
+            <p className="mt-1 text-xs text-amber-500/70">
+              Verificá que el proyecto de Supabase esté activo y las variables
+              DB_* en <code>web/.env.local</code>.
+            </p>
+          </div>
+        )}
+
+        {!data.error && !hasData && (
+          <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
+            No hay partidas en los marts todavía. Corré el pipeline (dlt + dbt)
+            para poblarlos.
+          </div>
+        )}
+
+        <Kpis summary={data.summary} />
+
+        <div className="mt-6">
+          <Card
+            title="Coaching"
+            subtitle="Análisis de tus partidas recientes vía LLM (OpenAI-compatible)"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <CoachingPanel />
+          </Card>
         </div>
-      </main>
-    </div>
+
+        {hasData && (
+          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card title="Tendencia semanal" subtitle="Winrate vs KDA (ranked)">
+              <TrendsChart trends={data.trends} />
+            </Card>
+            <Card title="Recursos por minuto" subtitle="Evolución semanal (ranked)">
+              <TrendsResourcesChart trends={data.trends} />
+            </Card>
+            <Card title="Últimas partidas — KDA" subtitle="Kills / Deaths / Assists y ratio">
+              <KdaTimelineChart matches={data.matches} />
+            </Card>
+            <Card title="Impacto en partida" subtitle="Daño share % vs Kill participation %">
+              <ImpactScatterChart matches={data.matches} />
+            </Card>
+            <Card title="Winrate por campeón" subtitle="Histórico ranked (con nº de partidas)">
+              <ChampionWinrateChart champions={data.champions} />
+            </Card>
+            <Card title="Early game" subtitle="CS/min a min 10 y 15, muertes ≤15m">
+              <EarlyGameChart earlyGame={data.earlyGame} />
+            </Card>
+          </div>
+        )}
+
+        {hasData && (
+          <div className="mt-6">
+            <Card title="Partidas recientes">
+              <MatchesTable matches={data.matches} />
+            </Card>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
