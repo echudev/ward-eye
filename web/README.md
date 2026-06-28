@@ -40,9 +40,10 @@ Obtené una API key gratis en https://console.groq.com/keys
 | `DB_NAME`      | `postgres`                                             |
 | `DB_USER`      | `postgres.<project_ref>`                               |
 | `DB_PASSWORD`  | Password de la DB                                      |
-| `LLM_BASE_URL` | Endpoint OpenAI-compatible (default Groq)              |
-| `LLM_API_KEY`  | API key del proveedor                                  |
-| `LLM_MODEL`    | Modelo (default `llama-3.3-70b-versatile`)             |
+| `LLM_BASE_URL`         | Endpoint OpenAI-compatible (default Groq)                       |
+| `LLM_API_KEY`          | API key del proveedor                                           |
+| `LLM_MODEL`            | Modelo (default `openai/gpt-oss-120b`)                          |
+| `LLM_REASONING_EFFORT` | Solo modelos de razonamiento: `low`/`medium`/`high` (opcional)  |
 
 ## Swappear a Claude
 

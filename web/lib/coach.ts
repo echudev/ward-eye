@@ -14,7 +14,16 @@ import type { ChampionStat, MatchPerformance, Summary } from "./types";
  */
 
 const BASE_URL = process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1";
-const MODEL = process.env.LLM_MODEL ?? "llama-3.3-70b-versatile";
+const MODEL = process.env.LLM_MODEL ?? "openai/gpt-oss-120b";
+
+// reasoning_effort: solo lo usan los modelos de razonamiento (gpt-oss, qwen3,
+// deepseek-r1...). Valores válidos en Groq: low | medium | high.
+// En modelos no-reasoning conviene dejarlo vacío.
+type ReasoningEffort = "low" | "medium" | "high";
+const REASONING_EFFORT: ReasoningEffort | undefined = (() => {
+  const v = process.env.LLM_REASONING_EFFORT?.toLowerCase();
+  return v === "low" || v === "medium" || v === "high" ? v : undefined;
+})();
 
 export type CoachInput = {
   summary: Summary | null;
@@ -96,6 +105,8 @@ export async function generateCoaching(
   const completion = await client.chat.completions.create({
     model: MODEL,
     temperature: 0.4,
+    // Si REASONING_EFFORT es undefined, el SDK omite el campo en el request.
+    reasoning_effort: REASONING_EFFORT,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildPrompt(input) },
