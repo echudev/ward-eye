@@ -1,0 +1,148 @@
+"""
+Cliente para la Riot Games API (Match-V5).
+Maneja rate limiting, reintentos y los dos niveles de routing:
+  - platform: para endpoints de summoner/league  (ej: la1.api.riotgames.com)
+  - regional:  para Match-V5 y account           (ej: americas.api.riotgames.com)
+"""
+
+import time
+import logging
+import requests
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+class RiotAPIError(Exception):
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(f"Riot API {status_code}: {message}")
+
+
+class RiotClient:
+    BASE_PLATFORM = "https://{region}.api.riotgames.com"
+    BASE_REGIONAL = "https://{region}.api.riotgames.com"
+
+    # Rate limits de personal key: 20 req/s, 100 req/2min
+    # Usamos delays conservadores para no acercarnos al límite
+    REQ_DELAY = 0.1        # 100ms entre requests (10 req/s, margen amplio)
+    RETRY_AFTER = 120      # segundos de espera si recibimos 429
+
+    def __init__(self, api_key: str, platform: str, routing: str):
+        """
+        api_key:  RGAPI-xxxx...
+        platform: la1 | la2 | na1 | euw1 | ...
+        routing:  americas | europe | asia | sea
+        """
+        self.api_key = api_key
+        self.platform = platform
+        self.routing = routing
+        self.session = requests.Session()
+        self.session.headers.update({"X-Riot-Token": self.api_key})
+        self._last_request = 0.0
+
+    def _wait(self):
+        """Respeta el intervalo mínimo entre requests."""
+        elapsed = time.time() - self._last_request
+        if elapsed < self.REQ_DELAY:
+            time.sleep(self.REQ_DELAY - elapsed)
+
+    def _get(self, url: str, params: dict = None, retries: int = 3) -> dict:
+        """GET con reintentos automáticos ante 429 y 5xx."""
+        for attempt in range(retries):
+            self._wait()
+            self._last_request = time.time()
+
+            resp = self.session.get(url, params=params)
+
+            if resp.status_code == 200:
+                return resp.json()
+
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", self.RETRY_AFTER))
+                logger.warning(f"Rate limited. Esperando {retry_after}s...")
+                time.sleep(retry_after)
+                continue
+
+            if resp.status_code in (500, 502, 503, 504) and attempt < retries - 1:
+                wait = 2 ** attempt
+                logger.warning(f"Error {resp.status_code}, reintento en {wait}s...")
+                time.sleep(wait)
+                continue
+
+            raise RiotAPIError(resp.status_code, resp.text)
+
+        raise RiotAPIError(429, "Rate limit persistente después de reintentos")
+
+    # -------------------------------------------------------------------------
+    # Account / Summoner
+    # -------------------------------------------------------------------------
+
+    def get_puuid(self, summoner_name: str, tag: str) -> str:
+        """Obtiene el PUUID global a partir de Riot ID (nombre#tag)."""
+        url = (
+            f"{self.BASE_REGIONAL.format(region=self.routing)}"
+            f"/riot/account/v1/accounts/by-riot-id/{summoner_name}/{tag}"
+        )
+        data = self._get(url)
+        return data["puuid"]
+
+    def get_summoner_by_puuid(self, puuid: str) -> dict:
+        """Datos de summoner (nivel, iconId, etc.)."""
+        url = (
+            f"{self.BASE_PLATFORM.format(region=self.platform)}"
+            f"/lol/summoner/v4/summoners/by-puuid/{puuid}"
+        )
+        return self._get(url)
+
+    def get_ranked_info(self, puuid: str) -> list[dict]:
+        """Información de ranked (tier, rank, LP, winrate) por PUUID."""
+        url = (
+            f"{self.BASE_PLATFORM.format(region=self.platform)}"
+            f"/lol/league/v4/entries/by-puuid/{puuid}"
+        )
+        return self._get(url)
+
+    # -------------------------------------------------------------------------
+    # Matches
+    # -------------------------------------------------------------------------
+
+    def get_match_ids(
+        self,
+        puuid: str,
+        start_time: Optional[int] = None,
+        count: int = 20,
+        queue: Optional[int] = None,
+    ) -> list[str]:
+        """
+        Lista de match IDs recientes.
+        start_time: epoch Unix en segundos (para carga incremental)
+        queue: 420 = ranked solo, 400 = normal draft, None = todos
+        """
+        url = (
+            f"{self.BASE_REGIONAL.format(region=self.routing)}"
+            f"/lol/match/v5/matches/by-puuid/{puuid}/ids"
+        )
+        params = {"count": count}
+        if start_time:
+            params["startTime"] = start_time
+        if queue is not None:
+            params["queue"] = queue
+
+        return self._get(url, params=params)
+
+    def get_match(self, match_id: str) -> dict:
+        """Datos completos de una partida (info + metadata)."""
+        url = (
+            f"{self.BASE_REGIONAL.format(region=self.routing)}"
+            f"/lol/match/v5/matches/{match_id}"
+        )
+        return self._get(url)
+
+    def get_match_timeline(self, match_id: str) -> dict:
+        """Timeline frame-a-frame de una partida."""
+        url = (
+            f"{self.BASE_REGIONAL.format(region=self.routing)}"
+            f"/lol/match/v5/matches/{match_id}/timeline"
+        )
+        return self._get(url)

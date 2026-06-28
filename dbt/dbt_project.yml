@@ -1,0 +1,18 @@
+name: ward_eye
+version: '0.1.0'
+config-version: 2
+
+profile: ward_eye
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target"]
+
+models:
+  ward_eye:
+    staging:
+      +schema: lol_staging
+      +materialized: view
+    marts:
+      +schema: lol_marts
+      +materialized: table

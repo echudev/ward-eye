@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: lol_raw
+    schema: lol_raw
+    tables:
+      - name: raw_matches
+      - name: raw_participants
+      - name: raw_timeline_frames
+      - name: raw_timeline_events
+      - name: raw_summoners
