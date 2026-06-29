@@ -11,6 +11,7 @@ import {
   tooltip,
   MUTED,
   WIN,
+  SECONDARY,
   PALETTE,
 } from "./theme";
 
@@ -53,6 +54,8 @@ export default function TrendsChart({ trends }: { trends: PlayerTrend[] }) {
           smooth: true,
           symbolSize: 7,
           data: rows.map((r) => r.avg_kda),
+          itemStyle: { color: SECONDARY },
+          lineStyle: { color: SECONDARY },
         },
       ],
     };

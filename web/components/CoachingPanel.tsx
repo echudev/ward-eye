@@ -14,7 +14,7 @@ type CoachResponse = {
 function inline(text: string): ReactNode {
   return text.split(/(\*\*[^*]+\*\*)/g).map((p, i) =>
     p.startsWith("**") && p.endsWith("**") ? (
-      <strong key={i} className="text-zinc-100">
+      <strong key={i} className="text-primary">
         {p.slice(2, -2)}
       </strong>
     ) : (
@@ -31,7 +31,10 @@ function Markdown({ text }: { text: string }) {
   const flush = (key: string) => {
     if (bullets.length) {
       out.push(
-        <ul key={key} className="mb-2 list-disc space-y-1 pl-5 text-sm text-zinc-300">
+        <ul
+          key={key}
+          className="mb-2 list-disc space-y-1 pl-5 text-sm text-fg marker:text-primary"
+        >
           {bullets.map((b, i) => (
             <li key={i}>{inline(b)}</li>
           ))}
@@ -46,7 +49,10 @@ function Markdown({ text }: { text: string }) {
     if (/^#{1,3}\s/.test(line)) {
       flush(`f${i}`);
       out.push(
-        <h3 key={i} className="mt-4 mb-1 text-sm font-semibold text-emerald-400">
+        <h3
+          key={i}
+          className="mt-4 mb-1 text-sm font-semibold uppercase tracking-[0.1em] text-primary"
+        >
           {line.replace(/^#{1,3}\s/, "")}
         </h3>,
       );
@@ -57,7 +63,7 @@ function Markdown({ text }: { text: string }) {
     } else {
       flush(`f${i}`);
       out.push(
-        <p key={i} className="mb-2 text-sm text-zinc-300">
+        <p key={i} className="mb-2 text-sm text-fg">
           {inline(line)}
         </p>,
       );
@@ -101,23 +107,23 @@ export function CoachingPanel() {
         <button
           onClick={run}
           disabled={loading}
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="btn-primary rounded px-4 py-2 text-sm font-semibold uppercase tracking-wide"
         >
           {loading ? "Analizando…" : "Generar coaching"}
         </button>
-        {model && <span className="text-xs text-zinc-500">modelo: {model}</span>}
+        {model && <span className="text-xs text-muted">modelo: {model}</span>}
       </div>
 
       {error && (
-        <p className="mt-3 rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">
+        <p className="mt-3 rounded-lg border border-danger/50 bg-danger/10 p-3 text-sm text-fg">
           {error}
         </p>
       )}
 
       {report && (
-        <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
-          <div className="mb-3 flex items-center justify-between border-b border-zinc-800 pb-2">
-            <span className="text-xs text-zinc-500">
+        <div className="surface-card mt-4 rounded-lg p-4">
+          <div className="mb-3 flex items-center justify-between border-b border-line pb-2">
+            <span className="text-xs text-muted">
               {generatedAt
                 ? `Generado ${generatedAt.toLocaleString()}`
                 : "Informe"}
@@ -135,7 +141,7 @@ export function CoachingPanel() {
                   ),
                 )
               }
-              className="rounded-md border border-zinc-700 px-3 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
+              className="rounded border border-primary/50 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
             >
               Descargar PDF
             </button>
@@ -145,7 +151,7 @@ export function CoachingPanel() {
       )}
 
       {!report && !error && !loading && (
-        <p className="mt-3 text-sm text-zinc-500">
+        <p className="mt-3 text-sm text-muted">
           Genera un análisis de tus partidas recientes con el LLM configurado.
         </p>
       )}

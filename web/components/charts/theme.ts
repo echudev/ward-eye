@@ -1,23 +1,24 @@
 /**
- * Tokens de estilo compartidos para los gráficos ECharts sobre fondo oscuro.
+ * Tokens de estilo para los gráficos ECharts: fondo oscuro + acentos fluor.
  */
 import type { EChartsOption } from "echarts";
 
-export const TEXT = "#e4e4e7"; // zinc-200
-export const MUTED = "#a1a1aa"; // zinc-400
-export const SPLIT = "#27272a"; // zinc-800
-export const AXIS_LINE = "#3f3f46"; // zinc-700
+export const TEXT = "#e8e8ea";
+export const MUTED = "#9b9ba3";
+export const SPLIT = "rgba(255, 255, 255, 0.06)";
+export const AXIS_LINE = "#3a3a40";
 
-export const WIN = "#34d399"; // emerald-400
-export const LOSS = "#f87171"; // red-400
+export const WIN = "#4cd7b3"; // turquesa (positivo)
+export const LOSS = "#ff4d6a"; // rojo (negativo)
+export const SECONDARY = "#b87ab3"; // malva (secundario)
 
 export const PALETTE = [
-  "#60a5fa", // blue-400
-  "#34d399", // emerald-400
-  "#f59e0b", // amber-500
-  "#f472b6", // pink-400
-  "#a78bfa", // violet-400
-  "#22d3ee", // cyan-400
+  "#4cd7b3", // turquesa (principal)
+  "#b87ab3", // malva (secundario)
+  "#6cc5e0", // celeste
+  "#e0a3d6", // malva claro
+  "#80e0c4", // turquesa claro
+  "#d8b46a", // ocre
 ];
 
 /** Base común: fondo transparente, tooltip y grilla coherentes. */
@@ -26,8 +27,8 @@ export const baseOption: EChartsOption = {
   textStyle: { color: MUTED, fontFamily: "inherit" },
   grid: { left: 48, right: 48, top: 48, bottom: 40, containLabel: true },
   tooltip: {
-    backgroundColor: "#18181b",
-    borderColor: SPLIT,
+    backgroundColor: "#141416",
+    borderColor: AXIS_LINE,
     textStyle: { color: TEXT },
   },
   legend: { textStyle: { color: MUTED }, top: 8 },
@@ -36,8 +37,8 @@ export const baseOption: EChartsOption = {
 export function tooltip(trigger: "axis" | "item" = "item") {
   return {
     trigger,
-    backgroundColor: "#18181b",
-    borderColor: SPLIT,
+    backgroundColor: "#141416",
+    borderColor: AXIS_LINE,
     textStyle: { color: TEXT },
   };
 }

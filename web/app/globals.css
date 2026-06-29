@@ -1,26 +1,94 @@
 @import "tailwindcss";
 
+@theme {
+  /* Superficies (negro / gris) */
+  --color-ink: #0a0a0b;
+  --color-surface: #141416;
+  --color-line: #26262a;
+
+  /* Texto */
+  --color-fg: #e8e8ea;
+  --color-muted: #9b9ba3;
+
+  /* Marca */
+  --color-primary: #4cd7b3; /* turquesa (principal) */
+  --color-primary-dim: #36b395;
+  --color-secondary: #b87ab3; /* malva (secundario) */
+  --color-danger: #ff4d6a;
+
+  /* Tipografía Ubuntu */
+  --font-sans: var(--font-ubuntu);
+  --font-mono: var(--font-ubuntu-mono);
+  --font-display: var(--font-ubuntu);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(
+      900px 460px at 50% -260px,
+      rgba(76, 215, 179, 0.06),
+      transparent 60%
+    ),
+    #0a0a0b;
+  background-attachment: fixed;
+  color: var(--color-fg);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+@layer utilities {
+  /* Tarjeta sobre fondo oscuro */
+  .surface-card {
+    background: #141416;
+    border: 1px solid #26262a;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .surface-card:hover {
+    border-color: rgba(76, 215, 179, 0.45);
+    box-shadow:
+      0 8px 28px rgba(0, 0, 0, 0.45),
+      0 0 0 1px rgba(76, 215, 179, 0.08);
+  }
+
+  /* Texto acento con glow */
+  .text-primary-glow {
+    color: #4cd7b3;
+    text-shadow: 0 0 18px rgba(76, 215, 179, 0.35);
+  }
+
+  /* Divisor */
+  .divider-primary {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(76, 215, 179, 0.5),
+      transparent
+    );
+  }
+
+  /* Botón principal */
+  .btn-primary {
+    background: #4cd7b3;
+    color: #0a0a0b;
+    border: 1px solid #36b395;
+    transition:
+      filter 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .btn-primary:hover {
+    filter: brightness(1.05);
+    box-shadow: 0 0 18px rgba(76, 215, 179, 0.4);
+  }
+  .btn-primary:disabled {
+    filter: saturate(0.4) brightness(0.7);
+    cursor: not-allowed;
+  }
 }

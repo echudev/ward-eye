@@ -1,14 +1,24 @@
 /**
- * Genera y descarga el informe de coaching como PDF (texto vectorial,
- * títulos, viñetas, paginado y fecha). Solo se usa del lado del cliente:
- * jsPDF se importa dinámicamente dentro de la función.
+ * Genera y descarga el informe de coaching como PDF en tema claro:
+ * fondo blanco, títulos en oscuro con línea turquesa, cuerpo en gris oscuro. Texto vectorial,
+ * viñetas, paginado y fecha. Solo se usa en el cliente: jsPDF se importa
+ * dinámicamente dentro de la función.
  */
 
 import type { CoachMeta } from "./types";
 
 type Segment = { text: string; bold: boolean };
+type RGB = [number, number, number];
 
-const RIOT_RED: [number, number, number] = [209, 54, 57]; // #D13639
+const C: Record<string, RGB> = {
+  text: [39, 39, 42], // gris casi negro (cuerpo)
+  primary: [76, 215, 179], // #4CD7B3 (turquesa)
+  secondary: [184, 122, 179], // #B87AB3 (malva)
+  accent: [76, 215, 179], // primario (líneas/viñetas)
+  label: [184, 122, 179], // secundario (etiquetas)
+  muted: [115, 115, 122], // gris (metadatos)
+  rule: [214, 214, 219], // gris claro (divisores)
+};
 
 /** jsPDF usa la codificación WinAnsi (Latin-1): normalizamos lo que no entra. */
 function toLatin1(s: string): string {
@@ -29,7 +39,8 @@ function tokenizeInline(text: string): Segment[] {
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
-    if (m.index > last) out.push({ text: text.slice(last, m.index), bold: false });
+    if (m.index > last)
+      out.push({ text: text.slice(last, m.index), bold: false });
     out.push({ text: m[1], bold: true });
     last = m.index + m[0].length;
   }
@@ -75,7 +86,7 @@ export async function downloadReportPdf({
     }
   };
 
-  /** Texto con segmentos en negrita/normal, con wrap y salto de página. */
+  /** Texto con segmentos en negrita/normal (color actual), wrap y salto de página. */
   const drawRich = (
     segments: Segment[],
     x: number,
@@ -111,7 +122,7 @@ export async function downloadReportPdf({
       const ww = doc.getTextWidth(w.text);
       if (lineWidth + ww > width && line.length) {
         flush();
-        if (/^\s+$/.test(w.text)) continue; // no arrancar línea con espacio
+        if (/^\s+$/.test(w.text)) continue;
       }
       line.push(w);
       lineWidth += ww;
@@ -119,86 +130,73 @@ export async function downloadReportPdf({
     if (line.length) flush();
   };
 
+  /** Línea "Etiqueta: valor" con etiqueta en verde y valor en gris oscuro. */
+  const drawKeyValue = (label: string, value: string) => {
+    ensureSpace(5);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...C.label);
+    doc.text(label, margin, y);
+    const lw = doc.getTextWidth(label);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...C.text);
+    doc.text(toLatin1(value), margin + lw, y);
+    y += 5;
+  };
+
   // ---- Encabezado ----
-  doc.setTextColor(24, 24, 27);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.text("ward-eye", margin, y);
-  y += 7;
-  doc.setFontSize(13);
-  doc.setTextColor(63, 63, 70);
+  doc.setFontSize(22);
+  doc.setTextColor(...C.text);
+  doc.text("ward-eye", margin, y + 1);
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(12);
+  doc.setTextColor(...C.muted);
   doc.text("Informe de coaching", margin, y);
   y += 4;
 
-  // Acento Riot red bajo el título
-  doc.setDrawColor(...RIOT_RED);
-  doc.setLineWidth(0.8);
-  doc.line(margin, y, margin + 28, y);
+  // Acento turquesa bajo el título
+  doc.setDrawColor(...C.accent);
+  doc.setLineWidth(0.9);
+  doc.line(margin, y, margin + 30, y);
   y += 7;
 
   // ---- Datos del jugador ----
   if (meta) {
-    doc.setTextColor(39, 39, 42);
     if (meta.player) {
-      drawRich(
-        [
-          { text: "Jugador: ", bold: true },
-          {
-            text: meta.region ? `${meta.player}  ·  ${meta.region}` : meta.player,
-            bold: false,
-          },
-        ],
-        margin,
-        maxW,
-        10,
-        5,
+      drawKeyValue(
+        "Jugador:  ",
+        meta.region ? `${meta.player}   ·   ${meta.region}` : meta.player,
       );
     }
-
     const profile: string[] = [];
     if (meta.mainRole) profile.push(`Rol principal: ${meta.mainRole}`);
     if (meta.winratePct != null) profile.push(`Winrate: ${meta.winratePct}%`);
-    if (profile.length) {
-      drawRich(
-        [
-          { text: "Perfil: ", bold: true },
-          { text: profile.join("  ·  "), bold: false },
-        ],
-        margin,
-        maxW,
-        10,
-        5,
-      );
-    }
+    if (profile.length) drawKeyValue("Perfil:  ", profile.join("   ·   "));
 
-    const total = meta.totalGames != null ? ` (de ${meta.totalGames} totales)` : "";
-    drawRich(
-      [
-        { text: "Partidas analizadas: ", bold: true },
-        {
-          text: `${meta.analyzedGames}${total}  ·  ${fmtShortDate(meta.dateFrom)} a ${fmtShortDate(meta.dateTo)}`,
-          bold: false,
-        },
-      ],
-      margin,
-      maxW,
-      10,
-      5,
+    const total =
+      meta.totalGames != null ? ` (de ${meta.totalGames} totales)` : "";
+    drawKeyValue(
+      "Partidas analizadas:  ",
+      `${meta.analyzedGames}${total}   ·   ${fmtShortDate(meta.dateFrom)} a ${fmtShortDate(meta.dateTo)}`,
     );
     y += 1;
   }
 
   // Generado / modelo
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.5);
-  doc.setTextColor(120, 120, 128);
+  doc.setFontSize(9);
+  doc.setTextColor(...C.muted);
   doc.text(
     `Generado: ${fmtDate(generatedAt)}${model ? `    Modelo: ${toLatin1(model)}` : ""}`,
     margin,
     y,
   );
   y += 4;
-  doc.setDrawColor(212, 212, 216);
+
+  // Divisor
+  doc.setDrawColor(...C.rule);
   doc.setLineWidth(0.3);
   doc.line(margin, y, pageW - margin, y);
   y += 8;
@@ -208,27 +206,33 @@ export async function downloadReportPdf({
     const line = raw.trimEnd();
 
     if (/^#{1,3}\s/.test(line)) {
-      const heading = line.replace(/^#{1,3}\s/, "");
-      y += 3;
-      ensureSpace(8);
+      const heading = toLatin1(line.replace(/^#{1,3}\s/, ""));
+      y += 5;
+      ensureSpace(9);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
-      doc.setTextColor(...RIOT_RED); // Riot red
-      doc.text(toLatin1(heading), margin, y);
-      y += 6;
-      doc.setTextColor(39, 39, 42); // gris oscuro para el cuerpo
+      doc.setTextColor(...C.text); // título en oscuro
+      doc.text(heading, margin, y);
+      const tw = doc.getTextWidth(heading);
+      y += 1.8;
+      // línea turquesa debajo del título (igual que en el encabezado)
+      doc.setDrawColor(...C.primary);
+      doc.setLineWidth(0.7);
+      doc.line(margin, y, margin + tw, y);
+      y += 5;
     } else if (/^\s*[-*]\s/.test(line)) {
       const content = line.replace(/^\s*[-*]\s/, "");
       ensureSpace(5);
-      doc.setFont("helvetica", "normal");
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(10.5);
-      doc.setTextColor(39, 39, 42);
-      doc.text("•", margin, y); // viñeta
+      doc.setTextColor(...C.accent);
+      doc.text("•", margin, y); // viñeta turquesa
+      doc.setTextColor(...C.text);
       drawRich(tokenizeInline(content), margin + 5, maxW - 5, 10.5, 5);
     } else if (line === "") {
       y += 2.5;
     } else {
-      doc.setTextColor(39, 39, 42);
+      doc.setTextColor(...C.text);
       drawRich(tokenizeInline(line), margin, maxW, 10.5, 5);
     }
   }
@@ -237,10 +241,14 @@ export async function downloadReportPdf({
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
+    doc.setDrawColor(...C.rule);
+    doc.setLineWidth(0.3);
+    doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(160, 160, 168);
-    doc.text(`ward-eye · página ${i}/${pages}`, pageW - margin, pageH - 8, {
+    doc.setTextColor(...C.muted);
+    doc.text("ward-eye · analytics & coaching", margin, pageH - 8);
+    doc.text(`página ${i}/${pages}`, pageW - margin, pageH - 8, {
       align: "right",
     });
   }

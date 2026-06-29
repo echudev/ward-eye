@@ -12,13 +12,18 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section
-      className={`rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 ${className ?? ""}`}
-    >
+    <section className={`surface-card rounded-lg p-4 ${className ?? ""}`}>
       {title && (
         <header className="mb-3">
-          <h2 className="text-sm font-semibold text-zinc-200">{title}</h2>
-          {subtitle && <p className="text-xs text-zinc-500">{subtitle}</p>}
+          <div className="flex items-center gap-2">
+            <span className="h-3.5 w-1 rounded-full bg-primary" />
+            <h2 className="text-sm font-medium uppercase tracking-[0.1em] text-primary">
+              {title}
+            </h2>
+          </div>
+          {subtitle && (
+            <p className="mt-0.5 pl-3 text-xs text-muted">{subtitle}</p>
+          )}
         </header>
       )}
       {children}

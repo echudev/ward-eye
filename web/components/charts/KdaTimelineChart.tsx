@@ -59,7 +59,7 @@ export default function KdaTimelineChart({
           type: "bar",
           stack: "kda",
           data: rows.map((m) => m.assists),
-          itemStyle: { color: "#60a5fa" },
+          itemStyle: { color: "#b87ab3" },
         },
         {
           name: "KDA",
@@ -68,8 +68,8 @@ export default function KdaTimelineChart({
           smooth: true,
           symbolSize: 6,
           data: rows.map((m) => m.kda_ratio),
-          itemStyle: { color: "#f59e0b" },
-          lineStyle: { color: "#f59e0b" },
+          itemStyle: { color: "#6cc5e0" },
+          lineStyle: { color: "#6cc5e0" },
         },
       ],
     };

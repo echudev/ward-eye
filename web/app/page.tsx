@@ -18,28 +18,37 @@ export default async function Home() {
   const hasData = data.matches.length > 0;
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">ward-eye</h1>
-          <p className="text-sm text-zinc-500">
-            Dashboard de partidas de League of Legends + coaching automático
+    <main className="min-h-screen">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+        <header className="mb-8 border-b border-line pb-5">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-primary-glow">
+              WardEye
+            </h1>
+            <span className="hidden text-[11px] uppercase tracking-[0.25em] text-secondary sm:inline">
+              analytics &amp; coaching
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-muted">
+            Dashboard de partidas de League of Legends · coaching automático
           </p>
         </header>
 
         {data.error && (
-          <div className="mb-6 rounded-xl border border-amber-900 bg-amber-950/40 p-4 text-sm text-amber-300">
-            <p className="font-semibold">No se pudieron cargar los datos.</p>
-            <p className="mt-1 text-amber-400/80">{data.error}</p>
-            <p className="mt-1 text-xs text-amber-500/70">
+          <div className="mb-6 rounded-lg border border-danger/50 bg-danger/10 p-4 text-sm">
+            <p className="font-semibold uppercase tracking-wide text-danger">
+              No se pudieron cargar los datos.
+            </p>
+            <p className="mt-1 text-muted">{data.error}</p>
+            <p className="mt-1 text-xs text-muted/70">
               Verificá que el proyecto de Supabase esté activo y las variables
-              DB_* en <code>web/.env.local</code>.
+              DB_* en <code className="text-primary">web/.env.local</code>.
             </p>
           </div>
         )}
 
         {!data.error && !hasData && (
-          <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
+          <div className="surface-card mb-6 rounded-lg p-4 text-sm text-muted">
             No hay partidas en los marts todavía. Corré el pipeline (dlt + dbt)
             para poblarlos.
           </div>
@@ -61,19 +70,34 @@ export default async function Home() {
             <Card title="Tendencia semanal" subtitle="Winrate vs KDA (ranked)">
               <TrendsChart trends={data.trends} />
             </Card>
-            <Card title="Recursos por minuto" subtitle="Evolución semanal (ranked)">
+            <Card
+              title="Recursos por minuto"
+              subtitle="Evolución semanal (ranked)"
+            >
               <TrendsResourcesChart trends={data.trends} />
             </Card>
-            <Card title="Últimas partidas — KDA" subtitle="Kills / Deaths / Assists y ratio">
+            <Card
+              title="Últimas partidas — KDA"
+              subtitle="Kills / Deaths / Assists y ratio"
+            >
               <KdaTimelineChart matches={data.matches} />
             </Card>
-            <Card title="Impacto en partida" subtitle="Daño share % vs Kill participation %">
+            <Card
+              title="Impacto en partida"
+              subtitle="Daño share % vs Kill participation %"
+            >
               <ImpactScatterChart matches={data.matches} />
             </Card>
-            <Card title="Winrate por campeón" subtitle="Histórico ranked (con nº de partidas)">
+            <Card
+              title="Winrate por campeón"
+              subtitle="Histórico ranked (con nº de partidas)"
+            >
               <ChampionWinrateChart champions={data.champions} />
             </Card>
-            <Card title="Early game" subtitle="CS/min a min 10 y 15, muertes ≤15m">
+            <Card
+              title="Early game"
+              subtitle="CS/min a min 10 y 15, muertes ≤15m"
+            >
               <EarlyGameChart earlyGame={data.earlyGame} />
             </Card>
           </div>
