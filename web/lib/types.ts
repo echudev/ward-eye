@@ -96,6 +96,17 @@ export type Summary = {
   avg_damage_per_min: number;
 };
 
+export type CoachMeta = {
+  player: string | null; // "Nombre#tag"
+  region: string | null;
+  mainRole: string | null;
+  totalGames: number | null;
+  analyzedGames: number;
+  dateFrom: string | null; // YYYY-MM-DD
+  dateTo: string | null; // YYYY-MM-DD
+  winratePct: number | null;
+};
+
 export type DashboardData = {
   summary: Summary | null;
   matches: MatchPerformance[];

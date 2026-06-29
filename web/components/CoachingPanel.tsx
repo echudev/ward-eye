@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { downloadReportPdf } from "@/lib/reportPdf";
+import type { CoachMeta } from "@/lib/types";
 
-type CoachResponse = { report?: string; model?: string; error?: string };
+type CoachResponse = {
+  report?: string;
+  model?: string;
+  meta?: CoachMeta | null;
+  error?: string;
+};
 
 function inline(text: string): ReactNode {
   return text.split(/(\*\*[^*]+\*\*)/g).map((p, i) =>
@@ -64,6 +71,8 @@ export function CoachingPanel() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
+  const [meta, setMeta] = useState<CoachMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function run() {
@@ -77,6 +86,8 @@ export function CoachingPanel() {
       }
       setReport(data.report ?? "");
       setModel(data.model ?? null);
+      setMeta(data.meta ?? null);
+      setGeneratedAt(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error desconocido.");
     } finally {
@@ -105,6 +116,30 @@ export function CoachingPanel() {
 
       {report && (
         <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
+          <div className="mb-3 flex items-center justify-between border-b border-zinc-800 pb-2">
+            <span className="text-xs text-zinc-500">
+              {generatedAt
+                ? `Generado ${generatedAt.toLocaleString()}`
+                : "Informe"}
+            </span>
+            <button
+              onClick={() =>
+                downloadReportPdf({
+                  report,
+                  model,
+                  meta,
+                  generatedAt: generatedAt ?? undefined,
+                }).catch((e) =>
+                  setError(
+                    e instanceof Error ? e.message : "Error generando el PDF.",
+                  ),
+                )
+              }
+              className="rounded-md border border-zinc-700 px-3 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
+            >
+              Descargar PDF
+            </button>
+          </div>
           <Markdown text={report} />
         </div>
       )}
