@@ -26,6 +26,15 @@ export type MatchPerformance = {
   damage_share: number; // 0..1
   kill_participation: number; // 0..1
   gold_per_min: number;
+  gold_share: number; // 0..1
+  control_wards_bought: number;
+  total_damage_taken: number;
+  solo_kills: number;
+  dragon_kills: number; // objetivos asegurados por el jugador
+  baron_kills: number;
+  turret_kills: number;
+  first_blood_kill: boolean;
+  first_tower_kill: boolean;
 };
 
 export type ChampionStat = {

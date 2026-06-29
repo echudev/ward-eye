@@ -53,7 +53,16 @@ export async function getMatchPerformance(
       damage_per_min::float                 as damage_per_min,
       damage_share::float                   as damage_share,
       kill_participation::float             as kill_participation,
-      gold_per_min::float                   as gold_per_min
+      gold_per_min::float                   as gold_per_min,
+      gold_share::float                     as gold_share,
+      control_wards_bought::int             as control_wards_bought,
+      total_damage_taken::int               as total_damage_taken,
+      solo_kills::int                       as solo_kills,
+      dragon_kills::int                     as dragon_kills,
+      baron_kills::int                      as baron_kills,
+      turret_kills::int                     as turret_kills,
+      first_blood_kill,
+      first_tower_kill
     from ${sql(MARTS)}.mart_match_performance
     order by game_start_at desc
     limit ${limit}
