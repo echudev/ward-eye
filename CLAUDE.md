@@ -8,8 +8,8 @@ Pipeline de datos personal para análisis de partidas de League of Legends con c
 
 ## Stack
 - **Extracción**: Python + Riot Games API (Match-V5) — `extraction/`
-- **Ingesta**: dlt con `write_disposition=merge`, carga incremental a PostgreSQL — `dlt_pipeline/`
-- **Storage**: PostgreSQL en Supabase (free tier)
+- **Ingesta**: dlt con `write_disposition=merge`, carga incremental a DuckDB — `dlt_pipeline/`
+- **Storage**: DuckDB — archivo local único `warddata.duckdb` (sin servidor; evita el sleep del free tier de Supabase)
 - **Transformación**: dbt Core (staging → marts) — `dbt/`
 - **Orquestación**: Prefect 3, schedule diario 23:00 ART — `flows/`
 - **Coaching**: Claude API (pendiente) — `coaching/claude_coach.py` (a crear)
@@ -29,8 +29,9 @@ python -m flows.daily_pipeline
 # Solo ingesta dlt
 python -m dlt_pipeline.pipeline
 
-# dbt
-cd dbt && dbt run --profiles-dir . && dbt test --profiles-dir .
+# dbt — OJO: en esta máquina dbt.exe está bloqueado por Application Control,
+# invocar vía python (el flow de Prefect ya lo hace internamente)
+cd dbt && python -m dbt.cli.main run --profiles-dir . && python -m dbt.cli.main test --profiles-dir .
 
 # Registrar schedule en Prefect (una sola vez)
 python -m flows.daily_pipeline deploy
@@ -44,11 +45,7 @@ RIOT_REGION=la1          # la1=LAN, la2=LAS, na1=NA, euw1=EUW
 RIOT_ROUTING=americas    # americas | europe | asia
 SUMMONER_NAME=...
 SUMMONER_TAG=...
-DB_HOST=db.xxxx.supabase.co
-DB_PORT=5432
-DB_NAME=postgres
-DB_USER=postgres
-DB_PASSWORD=...
+DUCKDB_PATH=...          # opcional; default <raíz>/warddata.duckdb (usá ruta absoluta para overridear)
 ANTHROPIC_API_KEY=...    # requerido para Punto 4
 ```
 
@@ -65,13 +62,19 @@ ANTHROPIC_API_KEY=...    # requerido para Punto 4
 ### Flujo en `flows/daily_pipeline.py`
 ```
 run_dlt_pipeline()
-    └─► run_dbt()            (wait_for dlt)
-    └─► get_todays_match_ids()  (wait_for dlt)
-            └─► generate_coaching_report()
+    └─► run_dbt()                  (wait_for dlt)
+            └─► get_todays_match_ids()   (wait_for dbt — DuckDB es single-writer)
+                    └─► generate_coaching_report()
 ```
-`get_todays_match_ids()` consulta `lol_marts.mart_match_performance` filtrando por `game_date = today`.
+`get_todays_match_ids()` consulta `lol_marts.mart_match_performance` filtrando por `game_date = today`. **Importante**: espera a `run_dbt` (no solo a `dlt`) porque DuckDB no permite leer el archivo mientras dbt lo está escribiendo.
 
-### Schemas en PostgreSQL
+### DuckDB — concurrencia (single-writer)
+Un archivo `.duckdb` admite **un solo proceso escritor** a la vez; varios lectores solo conviven entre sí (no con un escritor). Implicancias:
+- El pipeline (`dlt` → `dbt`) corre en serie y es el único que escribe.
+- La web (`web/lib/db.ts`) abre el archivo en `READ_ONLY` **por request** y lo cierra enseguida, para no bloquear al pipeline diario. Si el pipeline está escribiendo justo en ese instante, la lectura falla y la UI degrada con elegancia.
+- dbt y dlt comparten el mismo archivo vía `DUCKDB_PATH` (el flow pasa la ruta absoluta al subprocess de dbt).
+
+### Schemas en DuckDB (archivo único `warddata.duckdb`)
 - `lol_raw.*` — tablas raw (dlt): `raw_matches`, `raw_participants`, `raw_timeline_frames`, `raw_timeline_events`, `raw_summoners`
 - `lol_staging.*` — vistas (dbt staging): limpian y calculan métricas derivadas (cs/min, vision/min, damage/min)
 - `lol_marts.*` — tablas materializadas (dbt marts): `mart_match_performance`, `mart_champion_stats`, `mart_early_game`, `mart_player_trends`

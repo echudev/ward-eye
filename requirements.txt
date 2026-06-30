@@ -1,15 +1,15 @@
 # Ingesta
-dlt[postgres]>=0.5.0
+dlt[duckdb]>=0.5.0
 
 # Transformaciones
 dbt-core>=1.8.0
-dbt-postgres>=1.8.0
+dbt-duckdb>=1.8.0
 
 # Orquestación
 prefect>=3.0.0
 
-# Base de datos
-psycopg2-binary>=2.9.9
+# Base de datos (DuckDB local, archivo único)
+duckdb>=1.0.0
 
 # Utils
 python-dotenv>=1.0.0

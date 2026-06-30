@@ -41,8 +41,11 @@ export default async function Home() {
             </p>
             <p className="mt-1 text-muted">{data.error}</p>
             <p className="mt-1 text-xs text-muted/70">
-              Verificá que el proyecto de Supabase esté activo y las variables
-              DB_* en <code className="text-primary">web/.env.local</code>.
+              Verificá que exista el archivo{" "}
+              <code className="text-primary">warddata.duckdb</code> (corré el
+              pipeline) y, si lo moviste, la variable{" "}
+              <code className="text-primary">DUCKDB_PATH</code> en{" "}
+              <code className="text-primary">web/.env.local</code>.
             </p>
           </div>
         )}

@@ -20,8 +20,8 @@ per_champion as (
             avg(case when win then 1.0 else 0.0 end) * 100,
         1)                                                  as winrate_pct,
 
-        -- Posición más jugada
-        mode() within group (order by team_position)        as main_position,
+        -- Posición más jugada (mode() de DuckDB: agregado ordered-set nativo)
+        mode(team_position)                                 as main_position,
 
         -- KDA
         round(avg(kda_ratio), 2)                            as avg_kda,

@@ -1,5 +1,5 @@
 import "server-only";
-import { getSql } from "./db";
+import { withRun, type Run } from "./db";
 import type {
   ChampionStat,
   DashboardData,
@@ -12,9 +12,8 @@ import type {
 const MARTS = "lol_marts";
 
 /** Resumen global sobre todas las partidas (para las KPI cards). */
-export async function getSummary(): Promise<Summary | null> {
-  const sql = getSql();
-  const rows = await sql<Summary[]>`
+async function querySummary(run: Run): Promise<Summary | null> {
+  const rows = await run<Summary>(`
     select
       count(*)::int                                   as total_games,
       sum(case when win then 1 else 0 end)::int       as wins,
@@ -23,18 +22,19 @@ export async function getSummary(): Promise<Summary | null> {
       round(avg(cs_per_min), 2)::float                as avg_cs_per_min,
       round(avg(vision_per_min), 2)::float            as avg_vision_per_min,
       round(avg(damage_per_min), 0)::float            as avg_damage_per_min
-    from ${sql(MARTS)}.mart_match_performance
-  `;
+    from ${MARTS}.mart_match_performance
+  `);
   const s = rows[0];
   return s && s.total_games > 0 ? s : null;
 }
 
 /** Últimas N partidas (mart central). */
-export async function getMatchPerformance(
+async function queryMatchPerformance(
+  run: Run,
   limit = 30,
 ): Promise<MatchPerformance[]> {
-  const sql = getSql();
-  return sql<MatchPerformance[]>`
+  return run<MatchPerformance>(
+    `
     select
       match_id,
       game_date::text                       as game_date,
@@ -44,7 +44,7 @@ export async function getMatchPerformance(
       team_position,
       win,
       game_duration_min::float              as game_duration_min,
-      kills::int, deaths::int, assists::int,
+      kills::int as kills, deaths::int as deaths, assists::int as assists,
       kda_ratio::float                      as kda_ratio,
       total_cs::int                         as total_cs,
       cs_per_min::float                     as cs_per_min,
@@ -63,44 +63,51 @@ export async function getMatchPerformance(
       turret_kills::int                     as turret_kills,
       first_blood_kill,
       first_tower_kill
-    from ${sql(MARTS)}.mart_match_performance
+    from ${MARTS}.mart_match_performance
     order by game_start_at desc
-    limit ${limit}
-  `;
+    limit ?
+  `,
+    [limit],
+  );
 }
 
 /** Stats agregadas por campeón (solo ranked, según el mart). */
-export async function getChampionStats(limit = 15): Promise<ChampionStat[]> {
-  const sql = getSql();
-  return sql<ChampionStat[]>`
+async function queryChampionStats(
+  run: Run,
+  limit = 15,
+): Promise<ChampionStat[]> {
+  return run<ChampionStat>(
+    `
     select
       champion_name,
-      games_played::int,
-      wins::int,
-      losses::int,
-      winrate_pct::float,
+      games_played::int                     as games_played,
+      wins::int                             as wins,
+      losses::int                           as losses,
+      winrate_pct::float                    as winrate_pct,
       main_position,
-      avg_kda::float,
-      avg_kills::float,
-      avg_deaths::float,
-      avg_assists::float,
-      avg_cs_per_min::float,
-      avg_vision_per_min::float,
-      avg_damage_per_min::float,
-      avg_gold_per_min::float,
-      recent_winrate_pct::float,
-      winrate_trend::float,
-      kda_trend::float
-    from ${sql(MARTS)}.mart_champion_stats
+      avg_kda::float                        as avg_kda,
+      avg_kills::float                      as avg_kills,
+      avg_deaths::float                     as avg_deaths,
+      avg_assists::float                    as avg_assists,
+      avg_cs_per_min::float                 as avg_cs_per_min,
+      avg_vision_per_min::float             as avg_vision_per_min,
+      avg_damage_per_min::float             as avg_damage_per_min,
+      avg_gold_per_min::float               as avg_gold_per_min,
+      recent_winrate_pct::float             as recent_winrate_pct,
+      winrate_trend::float                  as winrate_trend,
+      kda_trend::float                      as kda_trend
+    from ${MARTS}.mart_champion_stats
     order by games_played desc
-    limit ${limit}
-  `;
+    limit ?
+  `,
+    [limit],
+  );
 }
 
 /** Early game de las últimas N partidas, ordenado cronológicamente. */
-export async function getEarlyGame(limit = 30): Promise<EarlyGame[]> {
-  const sql = getSql();
-  return sql<EarlyGame[]>`
+async function queryEarlyGame(run: Run, limit = 30): Promise<EarlyGame[]> {
+  return run<EarlyGame>(
+    `
     select
       e.match_id,
       e.champion_name,
@@ -115,44 +122,49 @@ export async function getEarlyGame(limit = 30): Promise<EarlyGame[]> {
       e.early_kills::int                    as early_kills,
       e.early_deaths::int                   as early_deaths,
       e.early_wards::int                    as early_wards
-    from ${sql(MARTS)}.mart_early_game e
-    left join ${sql(MARTS)}.mart_match_performance m using (match_id)
+    from ${MARTS}.mart_early_game e
+    left join ${MARTS}.mart_match_performance m using (match_id)
     order by m.game_start_at desc nulls last
-    limit ${limit}
-  `;
+    limit ?
+  `,
+    [limit],
+  );
 }
 
 /** Tendencias semanales (ranked), de la más vieja a la más nueva. */
-export async function getPlayerTrends(): Promise<PlayerTrend[]> {
-  const sql = getSql();
-  return sql<PlayerTrend[]>`
+async function queryPlayerTrends(run: Run): Promise<PlayerTrend[]> {
+  return run<PlayerTrend>(`
     select
       week_start::text                      as week_start,
-      queue_id::int,
+      queue_id::int                         as queue_id,
       queue_name,
-      games::int,
-      wins::int,
-      winrate_pct::float,
-      avg_kda::float,
-      avg_cs_per_min::float,
-      avg_vision_per_min::float,
-      avg_damage_per_min::float
-    from ${sql(MARTS)}.mart_player_trends
+      games::int                            as games,
+      wins::int                             as wins,
+      winrate_pct::float                    as winrate_pct,
+      avg_kda::float                        as avg_kda,
+      avg_cs_per_min::float                 as avg_cs_per_min,
+      avg_vision_per_min::float             as avg_vision_per_min,
+      avg_damage_per_min::float             as avg_damage_per_min
+    from ${MARTS}.mart_player_trends
     order by week_start asc, queue_id
-  `;
+  `);
 }
 
 /** Carga todo el dashboard en paralelo; degrada con elegancia si la DB falla. */
 export async function getDashboardData(): Promise<DashboardData> {
   try {
-    const [summary, matches, champions, earlyGame, trends] = await Promise.all([
-      getSummary(),
-      getMatchPerformance(30),
-      getChampionStats(15),
-      getEarlyGame(30),
-      getPlayerTrends(),
-    ]);
-    return { summary, matches, champions, earlyGame, trends, error: null };
+    return await withRun(async (run) => {
+      const [summary, matches, champions, earlyGame, trends] = await Promise.all(
+        [
+          querySummary(run),
+          queryMatchPerformance(run, 30),
+          queryChampionStats(run, 15),
+          queryEarlyGame(run, 30),
+          queryPlayerTrends(run),
+        ],
+      );
+      return { summary, matches, champions, earlyGame, trends, error: null };
+    });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Error desconocido consultando la DB";
@@ -165,4 +177,24 @@ export async function getDashboardData(): Promise<DashboardData> {
       error: message,
     };
   }
+}
+
+/** Datos para el endpoint de coaching (límites más chicos que el dashboard). */
+export async function getCoachingData(): Promise<{
+  summary: Summary | null;
+  matches: MatchPerformance[];
+  champions: ChampionStat[];
+  earlyGame: EarlyGame[];
+  trends: PlayerTrend[];
+}> {
+  return withRun(async (run) => {
+    const [summary, matches, champions, earlyGame, trends] = await Promise.all([
+      querySummary(run),
+      queryMatchPerformance(run, 20),
+      queryChampionStats(run, 10),
+      queryEarlyGame(run, 20),
+      queryPlayerTrends(run),
+    ]);
+    return { summary, matches, champions, earlyGame, trends };
+  });
 }

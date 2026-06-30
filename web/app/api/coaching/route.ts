@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateCoaching } from "@/lib/coach";
-import {
-  getChampionStats,
-  getEarlyGame,
-  getMatchPerformance,
-  getPlayerTrends,
-  getSummary,
-} from "@/lib/queries";
+import { getCoachingData } from "@/lib/queries";
 import type { CoachMeta, MatchPerformance, Summary } from "@/lib/types";
 
 // Siempre en runtime: consulta DB + LLM, nunca prerenderizar.
@@ -50,13 +44,8 @@ function buildMeta(summary: Summary | null, matches: MatchPerformance[]): CoachM
 
 export async function POST() {
   try {
-    const [summary, matches, champions, earlyGame, trends] = await Promise.all([
-      getSummary(),
-      getMatchPerformance(20),
-      getChampionStats(10),
-      getEarlyGame(20),
-      getPlayerTrends(),
-    ]);
+    const { summary, matches, champions, earlyGame, trends } =
+      await getCoachingData();
 
     const result = await generateCoaching({
       summary,

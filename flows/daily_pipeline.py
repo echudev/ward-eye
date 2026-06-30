@@ -1,7 +1,7 @@
 """
 ward-eye — Prefect flow principal
 Corre una vez por día, orquesta:
-  1. dlt  → extrae partidas nuevas de Riot API y las carga en PostgreSQL
+  1. dlt  → extrae partidas nuevas de Riot API y las carga en DuckDB (archivo local)
   2. dbt  → transforma raw → staging → marts
   3. Claude API → genera el coaching report de las partidas del día
 
@@ -10,6 +10,7 @@ Puede dispararse manualmente con: python -m flows.daily_pipeline
 """
 
 import os
+import sys
 import subprocess
 import logging
 from pathlib import Path
@@ -25,6 +26,9 @@ load_dotenv(override=True)
 ROOT_DIR  = Path(__file__).parent.parent
 DBT_DIR   = ROOT_DIR / "dbt"
 DBT_PROFILES_DIR = DBT_DIR   # profiles.yml está dentro de dbt/
+
+# Archivo DuckDB local compartido por dlt, dbt y la web (override con DUCKDB_PATH).
+DUCKDB_PATH = os.environ.get("DUCKDB_PATH", str(ROOT_DIR / "warddata.duckdb"))
 
 
 # ---------------------------------------------------------------------------
@@ -62,13 +66,11 @@ def run_dbt() -> None:
     """
     logger = get_run_logger()
 
+    # Ruta absoluta del archivo DuckDB: dbt corre con cwd=dbt/, así apunta al
+    # mismo archivo que dlt y la web sin depender del default relativo.
     env = {
         **os.environ,
-        "DB_HOST":     os.environ["DB_HOST"],
-        "DB_PORT":     os.environ.get("DB_PORT", "5432"),
-        "DB_NAME":     os.environ.get("DB_NAME", "postgres"),
-        "DB_USER":     os.environ.get("DB_USER", "postgres"),
-        "DB_PASSWORD": os.environ["DB_PASSWORD"],
+        "DUCKDB_PATH": DUCKDB_PATH,
     }
 
     def _run(cmd: list[str], step: str) -> None:
@@ -93,46 +95,44 @@ def run_dbt() -> None:
 
         logger.info(f"dbt {step} exitoso")
 
-    _run(
-        ["dbt", "run", "--profiles-dir", str(DBT_PROFILES_DIR)],
-        "run",
+    # Invocamos dbt como módulo de Python (no el dbt.exe del venv): en esta
+    # máquina una Application Control policy bloquea los .exe wrapper del venv
+    # (WinError 4551). Usamos `python -c` (en vez de `-m`) para evitar el
+    # RuntimeWarning de doble import de runpy en cada corrida.
+    dbt_entry = (
+        "import sys; from dbt.cli.main import cli; "
+        "sys.argv = ['dbt', *sys.argv[1:]]; cli()"
     )
-    _run(
-        ["dbt", "test", "--profiles-dir", str(DBT_PROFILES_DIR)],
-        "test",
-    )
+
+    def _dbt(*args: str) -> list[str]:
+        return [sys.executable, "-c", dbt_entry, *args]
+
+    _run(_dbt("run", "--profiles-dir", str(DBT_PROFILES_DIR)), "run")
+    _run(_dbt("test", "--profiles-dir", str(DBT_PROFILES_DIR)), "test")
 
 
 @task(name="fetch-todays-matches")
 def get_todays_match_ids() -> list[str]:
     """
-    Consulta los match_ids jugados hoy directamente en PostgreSQL.
+    Consulta los match_ids jugados hoy en el archivo DuckDB local (solo lectura).
     Se usa para decidir si hay partidas nuevas y para pasarlas al coaching.
     """
-    import psycopg2
+    import duckdb
 
     logger = get_run_logger()
     today = datetime.now(timezone.utc).date()
 
-    conn = psycopg2.connect(
-        host=os.environ["DB_HOST"],
-        port=int(os.environ.get("DB_PORT", 5432)),
-        dbname=os.environ.get("DB_NAME", "postgres"),
-        user=os.environ.get("DB_USER", "postgres"),
-        password=os.environ["DB_PASSWORD"],
-    )
+    conn = duckdb.connect(DUCKDB_PATH, read_only=True)
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT match_id
-                FROM lol_marts.mart_match_performance
-                WHERE game_date = %s
-                ORDER BY game_start_at
-                """,
-                (today,),
-            )
-            rows = cur.fetchall()
+        rows = conn.execute(
+            """
+            SELECT match_id
+            FROM lol_marts.mart_match_performance
+            WHERE game_date = ?
+            ORDER BY game_start_at
+            """,
+            [today],
+        ).fetchall()
     finally:
         conn.close()
 
@@ -168,7 +168,7 @@ def generate_coaching_report(match_ids: list[str]) -> str | None:
 
 @flow(
     name="ward-eye-daily",
-    description="Pipeline diario: Riot API → PostgreSQL → dbt → coaching",
+    description="Pipeline diario: Riot API → DuckDB → dbt → coaching",
     log_prints=True,
 )
 def daily_pipeline():
@@ -179,10 +179,11 @@ def daily_pipeline():
     dlt_result = run_dlt_pipeline()
 
     # 2. Transformaciones (depende de ingesta exitosa)
-    run_dbt(wait_for=[dlt_result])
+    dbt_result = run_dbt(wait_for=[dlt_result])
 
-    # 3. Partidas del día
-    match_ids = get_todays_match_ids(wait_for=[dlt_result])
+    # 3. Partidas del día — espera a dbt: DuckDB es de un solo escritor, no se
+    #    puede leer el archivo mientras dbt lo está escribiendo.
+    match_ids = get_todays_match_ids(wait_for=[dbt_result])
 
     # 4. Coaching report (punto 4)
     generate_coaching_report(match_ids)

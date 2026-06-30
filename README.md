@@ -1,7 +1,7 @@
 # LoL Coach — Pipeline de datos
 
-Pipeline de ingestión de partidas de League of Legends hacia PostgreSQL (Supabase),
-con análisis automático via Claude API.
+Pipeline de ingestión de partidas de League of Legends hacia un archivo DuckDB
+local (`warddata.duckdb`), con análisis automático via LLM.
 
 ## Setup
 
@@ -27,11 +27,7 @@ Variables requeridas:
 | `RIOT_ROUTING` | Regional routing para Match-V5 | `americas` (LAN/LAS/NA), `europe`, `asia` |
 | `SUMMONER_NAME` | Tu nombre de invocador (sin el #tag) | `MiNombre` |
 | `SUMMONER_TAG` | Tu tag de Riot ID | `LAN` |
-| `DB_HOST` | Host de Supabase | `db.xxxx.supabase.co` |
-| `DB_PORT` | Puerto PostgreSQL | `5432` |
-| `DB_NAME` | Nombre de la base | `postgres` |
-| `DB_USER` | Usuario | `postgres` |
-| `DB_PASSWORD` | Password de Supabase | `...` |
+| `DUCKDB_PATH` | (Opcional) Ruta del archivo DuckDB | default `<raíz>/warddata.duckdb` |
 
 **Regiones:**
 - LAN → `RIOT_REGION=la1`, `RIOT_ROUTING=americas`
@@ -55,7 +51,7 @@ dlt crea las tablas automáticamente en el schema `lol_raw` de tu base de datos.
 Cada ejecución solo carga partidas nuevas (incrementales).
 dlt guarda el cursor en `.dlt/` localmente.
 
-## Tablas creadas en PostgreSQL
+## Tablas creadas en DuckDB (schema `lol_raw`)
 
 ```
 lol_raw.raw_matches            -- Una fila por partida

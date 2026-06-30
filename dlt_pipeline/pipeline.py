@@ -1,5 +1,5 @@
 """
-Pipeline dlt: extrae datos de la Riot API y los carga en PostgreSQL (Supabase).
+Pipeline dlt: extrae datos de la Riot API y los carga en un archivo DuckDB local.
 
 Estrategia incremental:
   - raw_matches usa match_id como clave de merge → nunca duplica partidas
@@ -42,11 +42,10 @@ RIOT_ROUTING = os.environ.get("RIOT_ROUTING", "americas").strip()
 SUMMONER_NAME = os.environ["SUMMONER_NAME"].strip()
 SUMMONER_TAG = os.environ["SUMMONER_TAG"].strip()
 
-DB_HOST = os.environ["DB_HOST"]
-DB_PORT = os.environ.get("DB_PORT", "5432")
-DB_NAME = os.environ.get("DB_NAME", "postgres")
-DB_USER = os.environ.get("DB_USER", "postgres")
-DB_PASSWORD = os.environ["DB_PASSWORD"]
+# Archivo DuckDB local (un único archivo para todo el proyecto).
+# Default: <raíz del proyecto>/warddata.duckdb. Override opcional con DUCKDB_PATH.
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+DUCKDB_PATH = os.environ.get("DUCKDB_PATH", os.path.join(ROOT_DIR, "warddata.duckdb"))
 
 # Cuántas partidas atrás buscar en la primera ejecución (bootstrap)
 BOOTSTRAP_MATCH_COUNT = 50
@@ -144,9 +143,8 @@ def summoner_resource(client: RiotClient, puuid: str):
 
 
 def build_destination():
-    """Construye el destino dlt para PostgreSQL desde variables de entorno."""
-    conn_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    return dlt.destinations.postgres(conn_string)
+    """Destino dlt: archivo DuckDB local (evita el sleep del free tier de Supabase)."""
+    return dlt.destinations.duckdb(DUCKDB_PATH)
 
 
 def run_pipeline():

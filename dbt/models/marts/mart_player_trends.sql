@@ -40,9 +40,9 @@ weekly as (
         -- Participación
         round(avg(kill_participation), 3)           as avg_kill_participation,
 
-        -- Campeón más jugado esa semana
-        mode() within group (order by champion_name) as top_champion,
-        mode() within group (order by team_position) as top_position
+        -- Campeón más jugado esa semana (mode() nativo de DuckDB)
+        mode(champion_name) as top_champion,
+        mode(team_position) as top_position
 
     from base
     group by 1, 2

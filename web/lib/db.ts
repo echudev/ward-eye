@@ -1,61 +1,55 @@
 import "server-only";
-import postgres from "postgres";
+import path from "node:path";
+import { DuckDBInstance } from "@duckdb/node-api";
 
 /**
- * Cliente Postgres del lado del servidor (lazy).
+ * Acceso de solo-lectura al archivo DuckDB local del proyecto.
  *
- * Apunta al pooler de Supabase usando las mismas variables que el resto del
- * proyecto (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD). Nunca debe
- * importarse desde un Client Component: `server-only` lo garantiza en build.
+ * El pipeline (dlt + dbt) es el único que ESCRIBE el archivo; la web solo LEE.
+ * DuckDB no permite abrir un archivo en lectura mientras otro proceso lo tiene
+ * abierto en escritura, así que abrimos en modo READ_ONLY y por request (sin
+ * handle persistente): la ventana de lock queda en milisegundos y no bloquea al
+ * pipeline diario. Si el pipeline está escribiendo justo en ese instante, la
+ * lectura falla y la UI degrada con elegancia (ver getDashboardData).
  *
- * Se inicializa en el primer uso (no al importar) para que `next build` no
- * falle cuando las variables de entorno no están presentes.
- *
- * `prepare: false` mantiene la compatibilidad con el modo transaction del
- * pooler (puerto 6543) por si se cambia el puerto; en session mode (5432)
- * también funciona.
+ * DUCKDB_PATH puede ser absoluto o relativo al cwd de la web (web/).
+ * Default: ../warddata.duckdb (raíz del proyecto).
  */
 
-type Sql = ReturnType<typeof postgres>;
+const DB_PATH = path.resolve(
+  process.cwd(),
+  process.env.DUCKDB_PATH ?? "../warddata.duckdb",
+);
 
-declare global {
-  // Reutilizamos la conexión entre hot-reloads de `next dev`.
-  // eslint-disable-next-line no-var
-  var __wardEyeSql: Sql | undefined;
-}
+export type Run = <T>(
+  sql: string,
+  params?: (number | string | boolean | null)[],
+) => Promise<T[]>;
 
-function createClient(): Sql {
-  const {
-    DB_HOST,
-    DB_PORT = "5432",
-    DB_NAME = "postgres",
-    DB_USER = "postgres",
-    DB_PASSWORD,
-  } = process.env;
-
-  if (!DB_HOST || !DB_PASSWORD) {
-    throw new Error(
-      "Faltan variables de conexión: definí DB_HOST y DB_PASSWORD en web/.env.local",
-    );
-  }
-
-  return postgres({
-    host: DB_HOST,
-    port: Number(DB_PORT),
-    database: DB_NAME,
-    username: DB_USER,
-    password: DB_PASSWORD,
-    ssl: "require",
-    prepare: false,
-    max: 3,
-    idle_timeout: 20,
-    connect_timeout: 15,
+/**
+ * Abre el archivo en READ_ONLY, ejecuta `fn` con un runner de queries y cierra
+ * todo al terminar. Cada query usa su propia conexión sobre la misma instancia,
+ * lo que permite correr varias en paralelo (Promise.all).
+ */
+export async function withRun<T>(fn: (run: Run) => Promise<T>): Promise<T> {
+  const instance = await DuckDBInstance.create(DB_PATH, {
+    access_mode: "READ_ONLY",
   });
-}
-
-export function getSql(): Sql {
-  if (!globalThis.__wardEyeSql) {
-    globalThis.__wardEyeSql = createClient();
+  try {
+    const run: Run = async <R>(
+      sql: string,
+      params: (number | string | boolean | null)[] = [],
+    ): Promise<R[]> => {
+      const connection = await instance.connect();
+      try {
+        const reader = await connection.runAndReadAll(sql, params);
+        return reader.getRowObjects() as R[];
+      } finally {
+        connection.disconnectSync();
+      }
+    };
+    return await fn(run);
+  } finally {
+    instance.closeSync();
   }
-  return globalThis.__wardEyeSql;
 }

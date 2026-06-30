@@ -10,6 +10,10 @@ wheels/
 .venv
 .env
 
+# DuckDB local (datos, no versionar)
+*.duckdb
+*.duckdb.wal
+
 # dbt
 dbt/target/
 dbt/dbt_packages/
