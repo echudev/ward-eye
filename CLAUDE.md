@@ -75,7 +75,14 @@ DUCKDB_PATH=...          # opcional; default ../warddata.duckdb (relativo a web/
 - **routing** (`RIOT_ROUTING`, ej: `americas`): Match-V5 y Account endpoints
 
 ### dlt — estrategia incremental
-`matches_resource` usa `dlt.sources.incremental("game_start_ts")` para cursor automático entre ejecuciones. Los recursos secundarios (`participants`, `timeline_frames`, `timeline_events`) **no usan cursor**: reciben `match_ids` calculados manualmente antes de correr el pipeline. Esto significa que en cada ejecución se re-procesan los últimos `BOOTSTRAP_MATCH_COUNT=50` matches (idempotente por `write_disposition=merge`).
+Cursor manual con **única fuente de verdad = la propia tabla DuckDB** (`read_incremental_state()` en `dlt_pipeline/pipeline.py`): antes de correr se lee `max(game_start_ts)` y los `match_id` ya cargados de `lol_raw.raw_matches` (READ_ONLY, se cierra antes de que dlt escriba). Con eso se calcula **una sola lista de partidas nuevas** que comparten **todos** los recursos (`matches`, `participants`, `timeline_frames`, `timeline_events`) → ninguno re-procesa partidas viejas.
+
+- `fetch_new_match_ids()` **pagina** `get_match_ids` con `startTime` hasta agotar (no se pierden partidas aunque se jueguen >100 entre corridas) y las ordena de más vieja a más nueva.
+- El diff contra los `match_id` ya cargados descarta la partida del borde (que `startTime`, inclusivo en segundos, re-trae) y cualquier solape.
+- `MAX_MATCHES_PER_RUN=100` acota memoria/API por corrida; un backlog mayor se drena (más viejas primero) en corridas siguientes, sin pérdida.
+- `RiotClient.get_match` / `get_match_timeline` están **memoizados por instancia**: cada partida y cada timeline se descargan una sola vez aunque los consuman varios recursos (antes había doble fetch).
+- Primera corrida (bootstrap): trae las `BOOTSTRAP_MATCH_COUNT=50` más recientes. Día sin partidas: `new_ids` vacío → solo se refresca `raw_summoners`.
+- Idempotencia garantizada por `write_disposition=merge` + `primary_key` en cada recurso.
 
 ### Flujo en `flows/daily_pipeline.py`
 ```

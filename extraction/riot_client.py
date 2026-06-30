@@ -40,6 +40,10 @@ class RiotClient:
         self.session = requests.Session()
         self.session.headers.update({"X-Riot-Token": self.api_key})
         self._last_request = 0.0
+        # Memo por instancia (vida = una corrida del pipeline). Evita re-descargar
+        # la misma partida/timeline cuando varios recursos dlt la consumen.
+        self._match_cache: dict[str, dict] = {}
+        self._timeline_cache: dict[str, dict] = {}
 
     def _wait(self):
         """Respeta el intervalo mínimo entre requests."""
@@ -112,18 +116,20 @@ class RiotClient:
         puuid: str,
         start_time: Optional[int] = None,
         count: int = 20,
+        start: int = 0,
         queue: Optional[int] = None,
     ) -> list[str]:
         """
-        Lista de match IDs recientes.
+        Lista de match IDs recientes (de más nuevo a más viejo).
         start_time: epoch Unix en segundos (para carga incremental)
+        start: índice de inicio (para paginar; Riot devuelve máx 100 por página)
         queue: 420 = ranked solo, 400 = normal draft, None = todos
         """
         url = (
             f"{self.BASE_REGIONAL.format(region=self.routing)}"
             f"/lol/match/v5/matches/by-puuid/{puuid}/ids"
         )
-        params = {"count": count}
+        params = {"start": start, "count": count}
         if start_time:
             params["startTime"] = start_time
         if queue is not None:
@@ -132,17 +138,21 @@ class RiotClient:
         return self._get(url, params=params)
 
     def get_match(self, match_id: str) -> dict:
-        """Datos completos de una partida (info + metadata)."""
-        url = (
-            f"{self.BASE_REGIONAL.format(region=self.routing)}"
-            f"/lol/match/v5/matches/{match_id}"
-        )
-        return self._get(url)
+        """Datos completos de una partida (info + metadata). Memoizado por instancia."""
+        if match_id not in self._match_cache:
+            url = (
+                f"{self.BASE_REGIONAL.format(region=self.routing)}"
+                f"/lol/match/v5/matches/{match_id}"
+            )
+            self._match_cache[match_id] = self._get(url)
+        return self._match_cache[match_id]
 
     def get_match_timeline(self, match_id: str) -> dict:
-        """Timeline frame-a-frame de una partida."""
-        url = (
-            f"{self.BASE_REGIONAL.format(region=self.routing)}"
-            f"/lol/match/v5/matches/{match_id}/timeline"
-        )
-        return self._get(url)
+        """Timeline frame-a-frame de una partida. Memoizado por instancia."""
+        if match_id not in self._timeline_cache:
+            url = (
+                f"{self.BASE_REGIONAL.format(region=self.routing)}"
+                f"/lol/match/v5/matches/{match_id}/timeline"
+            )
+            self._timeline_cache[match_id] = self._get(url)
+        return self._timeline_cache[match_id]

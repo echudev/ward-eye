@@ -1,11 +1,16 @@
 """
 Pipeline dlt: extrae datos de la Riot API y los carga en un archivo DuckDB local.
 
-Estrategia incremental:
-  - raw_matches usa match_id como clave de merge → nunca duplica partidas
-  - raw_summoners usa puuid como clave → actualiza el estado ranked
-  - raw_participants, raw_timeline_frames, raw_timeline_events
-    usan merge por (match_id, ...) → idempotente ante re-ejecuciones
+Estrategia incremental (cursor manual, única fuente de verdad = la propia tabla):
+  - Antes de correr leemos de DuckDB el cursor (max game_start_ts ya cargado) y
+    los match_id ya presentes. Con eso calculamos UNA sola lista de partidas
+    nuevas que compartimos entre TODOS los recursos (matches, participants,
+    timelines) → ninguno re-procesa partidas viejas.
+  - get_match_ids se pagina con startTime, así no se pierden partidas aunque se
+    hayan jugado más de 100 entre corridas.
+  - get_match / get_match_timeline están memoizados en el cliente: cada partida
+    se descarga una sola vez aunque la usen varios recursos.
+  - merge + primary_key en cada recurso → idempotente ante cualquier re-ejecución.
 
 Cómo correr manualmente:
   python -m dlt_pipeline.pipeline
@@ -50,6 +55,11 @@ DUCKDB_PATH = os.environ.get("DUCKDB_PATH", os.path.join(ROOT_DIR, "warddata.duc
 # Cuántas partidas atrás buscar en la primera ejecución (bootstrap)
 BOOTSTRAP_MATCH_COUNT = 50
 
+# Tope de partidas a procesar por corrida. Si hubo un parate largo y hay más
+# pendientes, se procesan las más viejas primero y el resto se drena en corridas
+# siguientes (sin pérdida). Acota memoria y consumo de la API por corrida.
+MAX_MATCHES_PER_RUN = 100
+
 
 # ---------------------------------------------------------------------------
 # Fuentes dlt
@@ -61,29 +71,13 @@ BOOTSTRAP_MATCH_COUNT = 50
     write_disposition="merge",
     primary_key="match_id",
 )
-def matches_resource(
-    client: RiotClient,
-    puuid: str,
-    last_game_start_ts=dlt.sources.incremental(
-        "game_start_ts",
-        initial_value=0,
-    ),
-):
+def matches_resource(client: RiotClient, puuid: str, match_ids: list[str]):
     """
-    Recurso incremental: solo trae partidas más nuevas que la última cargada.
-    dlt rastrea automáticamente el máximo de game_start_ts entre ejecuciones.
+    Detalle de cada partida nueva. La lista `match_ids` ya viene filtrada
+    incrementalmente en run_pipeline (solo partidas aún no cargadas).
+    `client.get_match` está memoizado: participants_resource reusa esta misma
+    descarga sin volver a pegarle a la API.
     """
-    # Convertimos el cursor de ms a segundos para la API de Riot
-    start_time_s = (last_game_start_ts.last_value or 0) // 1000
-
-    logger.info(f"Buscando partidas desde epoch {start_time_s}...")
-    match_ids = client.get_match_ids(
-        puuid=puuid,
-        start_time=start_time_s if start_time_s > 0 else None,
-        count=BOOTSTRAP_MATCH_COUNT,
-    )
-    logger.info(f"Encontradas {len(match_ids)} partidas nuevas")
-
     for match_id in match_ids:
         logger.info(f"Procesando {match_id}...")
         raw = client.get_match(match_id)
@@ -147,6 +141,72 @@ def build_destination():
     return dlt.destinations.duckdb(DUCKDB_PATH)
 
 
+def read_incremental_state() -> tuple[int | None, set[str]]:
+    """
+    Estado incremental leído directo de DuckDB (única fuente de verdad):
+      - last_ts:    máximo game_start_ts ya cargado (ms), o None si no hay datos
+      - loaded_ids: match_id ya presentes, para no reprocesarlos
+
+    Abre el archivo en READ_ONLY y lo cierra enseguida. DuckDB es single-writer,
+    pero esta lectura corre ANTES de que dlt abra el archivo para escribir, así
+    que no hay conflicto de lock.
+    """
+    if not os.path.exists(DUCKDB_PATH):
+        return None, set()
+
+    import duckdb
+
+    conn = duckdb.connect(DUCKDB_PATH, read_only=True)
+    try:
+        last_ts = conn.execute(
+            "SELECT max(game_start_ts) FROM lol_raw.raw_matches"
+        ).fetchone()[0]
+        loaded_ids = {
+            r[0]
+            for r in conn.execute(
+                "SELECT match_id FROM lol_raw.raw_matches"
+            ).fetchall()
+        }
+        return last_ts, loaded_ids
+    except duckdb.CatalogException:
+        # raw_matches todavía no existe (primera corrida sobre archivo recién creado)
+        return None, set()
+    finally:
+        conn.close()
+
+
+def fetch_new_match_ids(
+    client: RiotClient, puuid: str, last_ts: int | None
+) -> list[str]:
+    """
+    Match IDs a procesar, ordenados de más viejo a más nuevo.
+      - Bootstrap (sin datos previos): las BOOTSTRAP_MATCH_COUNT más recientes.
+      - Incremental: pagina con startTime hasta agotar, para no perder partidas
+        si se jugaron más de 100 desde la última corrida.
+    Riot devuelve de más nuevo a más viejo; invertimos para procesar en orden
+    cronológico (el cursor avanza parejo y un backlog se drena sin huecos).
+    """
+    if last_ts is None:
+        ids = client.get_match_ids(puuid=puuid, count=BOOTSTRAP_MATCH_COUNT)
+        return list(reversed(ids))
+
+    start_time_s = last_ts // 1000
+    page = 100  # máximo permitido por Match-V5
+    collected: list[str] = []
+    start = 0
+    while True:
+        batch = client.get_match_ids(
+            puuid=puuid, start=start, start_time=start_time_s, count=page
+        )
+        if not batch:
+            break
+        collected.extend(batch)
+        if len(batch) < page:
+            break
+        start += page
+    return list(reversed(collected))
+
+
 def run_pipeline():
     client = RiotClient(
         api_key=RIOT_API_KEY,
@@ -159,29 +219,41 @@ def run_pipeline():
     puuid = client.get_puuid(SUMMONER_NAME, SUMMONER_TAG)
     logger.info(f"PUUID: {puuid}")
 
-    # 2. Traemos los match IDs nuevos (para pasarlos a los recursos secundarios)
-    #    dlt manejará el cursor incremental internamente en matches_resource,
-    #    pero necesitamos la lista para cargar participants y timelines.
-    #    Usamos start_time=0 en bootstrap; en corridas siguientes el cursor
-    #    de dlt filtra automáticamente.
-    match_ids = client.get_match_ids(puuid=puuid, count=BOOTSTRAP_MATCH_COUNT)
-    logger.info(f"Match IDs a procesar: {len(match_ids)}")
+    # 2. Estado incremental: leemos cursor + IDs ya cargados desde DuckDB y
+    #    calculamos UNA sola lista de partidas nuevas, compartida por todos los
+    #    recursos. El diff contra loaded_ids descarta la partida del borde (que
+    #    startTime, inclusivo en segundos, vuelve a traer) y cualquier solape.
+    last_ts, loaded_ids = read_incremental_state()
+    fetched = fetch_new_match_ids(client, puuid, last_ts)
+    new_ids = [m for m in fetched if m not in loaded_ids]
+
+    if len(new_ids) > MAX_MATCHES_PER_RUN:
+        logger.warning(
+            f"{len(new_ids)} partidas nuevas; proceso las {MAX_MATCHES_PER_RUN} "
+            f"más viejas esta corrida (el resto en la próxima, sin pérdida)."
+        )
+        new_ids = new_ids[:MAX_MATCHES_PER_RUN]
+
+    logger.info(f"Cursor={last_ts} — partidas nuevas a procesar: {len(new_ids)}")
 
     # 3. Construimos el pipeline dlt
     pipeline = dlt.pipeline(
         pipeline_name="lol_coach",
         destination=build_destination(),
-        dataset_name="lol_raw",  # schema en PostgreSQL
+        dataset_name="lol_raw",  # schema raw en DuckDB
         progress="log",
     )
 
-    # 4. Cargamos todos los recursos en una sola ejecución
+    # 4. Cargamos todos los recursos en una sola ejecución. get_match y
+    #    get_match_timeline están memoizados en el cliente, así que cada partida
+    #    se descarga una sola vez aunque la consuman varios recursos.
+    #    Si new_ids está vacío (día sin partidas), solo se refresca el summoner.
     load_info = pipeline.run(
         [
-            matches_resource(client, puuid),
-            participants_resource(client, puuid, match_ids),
-            timeline_frames_resource(client, match_ids),
-            timeline_events_resource(client, match_ids),
+            matches_resource(client, puuid, new_ids),
+            participants_resource(client, puuid, new_ids),
+            timeline_frames_resource(client, new_ids),
+            timeline_events_resource(client, new_ids),
             summoner_resource(client, puuid),
         ]
     )
