@@ -57,13 +57,21 @@ DUCKDB_PATH=...          # opcional; default <raíz>/warddata.duckdb (usá ruta 
 
 ### Coaching — `web/.env.local`
 
-El LLM se configura 100% por env (sin acoplar proveedor). Default: free tier de Groq.
+El LLM se configura 100% por env, con un set de vars por proveedor (base URL
+y API key difieren entre proveedores, no solo el modelo). El dashboard elige
+entre ellos con un selector — ver "Coaching (web)" más abajo.
 
 ```
-LLM_BASE_URL=...         # endpoint OpenAI-compatible (default Groq)
-LLM_API_KEY=...          # key del proveedor
-LLM_MODEL=...            # modelo a usar
-LLM_REASONING_EFFORT=... # opcional: low | medium | high (modelos de razonamiento)
+LLM_GROQ_BASE_URL=...           # default https://api.groq.com/openai/v1
+LLM_GROQ_API_KEY=...
+LLM_GROQ_MODEL=...              # default openai/gpt-oss-120b
+LLM_GROQ_REASONING_EFFORT=...   # opcional: low | medium | high
+
+LLM_GEMINI_BASE_URL=...         # default https://generativelanguage.googleapis.com/v1beta/openai/
+LLM_GEMINI_API_KEY=...          # key de Google AI Studio
+LLM_GEMINI_MODEL=...            # default gemini-3.5-flash
+LLM_GEMINI_REASONING_EFFORT=... # opcional: low | medium | high
+
 DUCKDB_PATH=...          # opcional; default ../warddata.duckdb (relativo a web/)
 ```
 
@@ -109,7 +117,7 @@ El coaching se implementó como **dashboard Next.js en `web/`** (no como `coachi
 
 - **Datos**: server-side, lee los marts (`lol_marts.*`) del archivo DuckDB en `READ_ONLY` por request (`web/lib/db.ts`, `web/lib/queries.ts`). El acceso nunca llega al cliente (`server-only`).
 - **Gráficos**: Apache ECharts vía wrapper propio `web/components/EChart.tsx` (sin `echarts-for-react` por peer-deps con React 19).
-- **Coaching on-demand**: botón → `POST /api/coaching` → `web/lib/coach.ts`. Usa el SDK `openai` contra un endpoint **OpenAI-compatible** configurable por env (`LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`). Default Groq free tier; swappear a Claude = solo cambiar esas vars (Anthropic expone endpoint OpenAI-compatible) o reemplazar `lib/coach.ts` por el SDK `@anthropic-ai/sdk`.
+- **Coaching on-demand**: selector de proveedor + botón → `POST /api/coaching` con `{ provider: "groq" | "gemini" }` → `web/lib/coach.ts`. Usa el SDK `openai` contra el endpoint **OpenAI-compatible** del proveedor elegido, configurable por env (`LLM_GROQ_*` / `LLM_GEMINI_*`, ver más arriba). Default Groq free tier. Agregar un tercer proveedor (ej. Claude, que también expone endpoint OpenAI-compatible) = sumar un caso en `getProviderConfig()` + su entrada en `lib/providers.ts`, o reemplazar `lib/coach.ts` por el SDK nativo del proveedor.
 - El prompt arma bloques: comparación Victorias vs Derrotas, early game, tendencia semanal, partidas recientes y campeones; calibrado al rol principal del jugador. Devuelve Markdown con secciones fijas (Resumen / Puntos fuertes / Áreas de mejora / Objetivos próxima sesión).
 
 > `web/` corre Next.js 16 con su propia copia de docs en `node_modules/next/dist/docs/` (ver `web/AGENTS.md`): tiene breaking changes respecto a versiones previas, leé la guía relevante antes de tocar código del frontend.
