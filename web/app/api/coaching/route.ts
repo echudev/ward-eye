@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { generateCoaching } from "@/lib/coach";
 import { getCoachingData } from "@/lib/queries";
+import type { Provider } from "@/lib/providers";
 import type { CoachMeta, MatchPerformance, Summary } from "@/lib/types";
+
+function isProvider(value: unknown): value is Provider {
+  return value === "groq" || value === "gemini";
+}
 
 // Siempre en runtime: consulta DB + LLM, nunca prerenderizar.
 export const dynamic = "force-dynamic";
@@ -42,18 +47,18 @@ function buildMeta(summary: Summary | null, matches: MatchPerformance[]): CoachM
   };
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const body = await request.json().catch(() => null);
+    const provider: Provider = isProvider(body?.provider) ? body.provider : "groq";
+
     const { summary, matches, champions, earlyGame, trends } =
       await getCoachingData();
 
-    const result = await generateCoaching({
-      summary,
-      matches,
-      champions,
-      earlyGame,
-      trends,
-    });
+    const result = await generateCoaching(
+      { summary, matches, champions, earlyGame, trends },
+      provider,
+    );
     const meta = buildMeta(summary, matches);
     return NextResponse.json({ ...result, meta });
   } catch (err) {

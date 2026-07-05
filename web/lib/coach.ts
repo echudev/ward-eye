@@ -1,5 +1,6 @@
 import "server-only";
 import OpenAI from "openai";
+import type { Provider } from "./providers";
 import type {
   ChampionStat,
   EarlyGame,
@@ -9,27 +10,51 @@ import type {
 } from "./types";
 
 /**
- * Coaching contra un endpoint OpenAI-compatible.
- * Configurable por env para swappear de proveedor sin tocar código:
- *   LLM_BASE_URL  (ej: https://api.groq.com/openai/v1)
- *   LLM_API_KEY   (la key del proveedor)
- *   LLM_MODEL     (ej: llama-3.3-70b-versatile)
- *
- * Para usar Claude más adelante: LLM_BASE_URL=https://api.anthropic.com/v1/
- * con su endpoint OpenAI-compatible, o reemplazar por el SDK `anthropic`.
+ * Coaching contra un endpoint OpenAI-compatible. Cada proveedor tiene su
+ * propio set de env vars (base URL y API key difieren, no solo el modelo):
+ *   LLM_GROQ_BASE_URL   / LLM_GROQ_API_KEY   / LLM_GROQ_MODEL   / LLM_GROQ_REASONING_EFFORT
+ *   LLM_GEMINI_BASE_URL / LLM_GEMINI_API_KEY / LLM_GEMINI_MODEL / LLM_GEMINI_REASONING_EFFORT
+ * El proveedor a usar lo elige el usuario en el selector de `CoachingPanel`.
  */
 
-const BASE_URL = process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1";
-const MODEL = process.env.LLM_MODEL ?? "openai/gpt-oss-120b";
-
 // reasoning_effort: solo lo usan los modelos de razonamiento (gpt-oss, qwen3,
-// deepseek-r1...). Valores válidos en Groq: low | medium | high.
+// deepseek-r1, y Gemini vía su capa OpenAI-compatible). Valores: low | medium | high.
 // En modelos no-reasoning conviene dejarlo vacío.
 type ReasoningEffort = "low" | "medium" | "high";
-const REASONING_EFFORT: ReasoningEffort | undefined = (() => {
-  const v = process.env.LLM_REASONING_EFFORT?.toLowerCase();
-  return v === "low" || v === "medium" || v === "high" ? v : undefined;
-})();
+
+function parseReasoningEffort(v: string | undefined): ReasoningEffort | undefined {
+  const s = v?.toLowerCase();
+  return s === "low" || s === "medium" || s === "high" ? s : undefined;
+}
+
+type ProviderConfig = {
+  baseUrl: string;
+  apiKey: string | undefined;
+  apiKeyEnvVar: string;
+  model: string;
+  reasoningEffort: ReasoningEffort | undefined;
+};
+
+function getProviderConfig(provider: Provider): ProviderConfig {
+  if (provider === "gemini") {
+    return {
+      baseUrl:
+        process.env.LLM_GEMINI_BASE_URL ??
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+      apiKey: process.env.LLM_GEMINI_API_KEY,
+      apiKeyEnvVar: "LLM_GEMINI_API_KEY",
+      model: process.env.LLM_GEMINI_MODEL ?? "gemini-3.5-flash",
+      reasoningEffort: parseReasoningEffort(process.env.LLM_GEMINI_REASONING_EFFORT),
+    };
+  }
+  return {
+    baseUrl: process.env.LLM_GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
+    apiKey: process.env.LLM_GROQ_API_KEY,
+    apiKeyEnvVar: "LLM_GROQ_API_KEY",
+    model: process.env.LLM_GROQ_MODEL ?? "openai/gpt-oss-120b",
+    reasoningEffort: parseReasoningEffort(process.env.LLM_GROQ_REASONING_EFFORT),
+  };
+}
 
 export type CoachInput = {
   summary: Summary | null;
@@ -203,24 +228,23 @@ Cada sección con 2-4 bullets accionables. Sé específico citando métricas con
 
 export async function generateCoaching(
   input: CoachInput,
+  provider: Provider = "groq",
 ): Promise<CoachResult> {
-  const apiKey = process.env.LLM_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "Falta LLM_API_KEY en web/.env.local (key de Groq u otro proveedor OpenAI-compatible).",
-    );
+  const config = getProviderConfig(provider);
+  if (!config.apiKey) {
+    throw new Error(`Falta ${config.apiKeyEnvVar} en web/.env.local.`);
   }
   if (input.matches.length === 0) {
     throw new Error("No hay partidas para analizar todavía.");
   }
 
-  const client = new OpenAI({ baseURL: BASE_URL, apiKey });
+  const client = new OpenAI({ baseURL: config.baseUrl, apiKey: config.apiKey });
 
   const completion = await client.chat.completions.create({
-    model: MODEL,
+    model: config.model,
     temperature: 0.4,
-    // Si REASONING_EFFORT es undefined, el SDK omite el campo en el request.
-    reasoning_effort: REASONING_EFFORT,
+    // Si reasoningEffort es undefined, el SDK omite el campo en el request.
+    reasoning_effort: config.reasoningEffort,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildPrompt(input) },
@@ -231,5 +255,5 @@ export async function generateCoaching(
   if (!report) {
     throw new Error("El modelo no devolvió contenido.");
   }
-  return { report, model: MODEL };
+  return { report, model: config.model };
 }

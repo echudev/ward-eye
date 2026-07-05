@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { downloadReportPdf } from "@/lib/reportPdf";
+import { PROVIDERS, type Provider } from "@/lib/providers";
 import type { CoachMeta } from "@/lib/types";
 
 type CoachResponse = {
@@ -74,6 +75,7 @@ function Markdown({ text }: { text: string }) {
 }
 
 export function CoachingPanel() {
+  const [provider, setProvider] = useState<Provider>("groq");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
@@ -85,7 +87,11 @@ export function CoachingPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/coaching", { method: "POST" });
+      const res = await fetch("/api/coaching", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
       const data: CoachResponse = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.error ?? "Error generando el coaching.");
@@ -104,6 +110,18 @@ export function CoachingPanel() {
   return (
     <div>
       <div className="flex items-center gap-3">
+        <select
+          value={provider}
+          onChange={(e) => setProvider(e.target.value as Provider)}
+          disabled={loading}
+          className="rounded border border-line bg-surface px-2 py-2 text-sm text-fg disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
         <button
           onClick={run}
           disabled={loading}
