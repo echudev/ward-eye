@@ -1,8 +1,10 @@
 /**
  * Tipos de las filas de los marts (`lol_marts.*`).
  * Solo incluyen las columnas que consume el dashboard.
- * Los numéricos de Postgres llegan como `number` salvo los que el driver
- * devuelve como string (numeric/bigint): se castean en las queries.
+ * Los numéricos llegan como `number` salvo los DECIMAL/NUMERIC, que el driver
+ * de DuckDB devuelve como string: por eso las queries los castean con
+ * `::double` (NO `::float` — en DuckDB `FLOAT` es alias de `REAL`, 32 bits,
+ * y pierde precisión al volver a un `number` de JS de 64 bits).
  */
 
 export type MatchPerformance = {

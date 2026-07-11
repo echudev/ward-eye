@@ -37,7 +37,7 @@ export default function ImpactScatterChart({
         ...tooltip("item"),
         formatter: (p: unknown) => {
           const d = p as { data: Point };
-          return `${d.data.champion}<br/>Daño: ${d.data.value[0]}% · KP: ${d.data.value[1]}%<br/>KDA: ${d.data.kda}`;
+          return `${d.data.champion}<br/>Daño: ${d.data.value[0]}% · KP: ${d.data.value[1]}%<br/>KDA: ${d.data.kda.toFixed(2)}`;
         },
       },
       legend: {

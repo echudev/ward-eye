@@ -1,9 +1,11 @@
 -- stg_matches.sql
 -- Limpia y enriquece los datos de partidas.
 -- Convierte timestamps, calcula duración en minutos, asigna nombre de cola.
+-- Descarta remakes (partidas que terminan antes de los 5min por /remake).
 
 with source as (
     select * from {{ source('lol_raw', 'raw_matches') }}
+    where game_duration_s >= 300
 )
 
 select

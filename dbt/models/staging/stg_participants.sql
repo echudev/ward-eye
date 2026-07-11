@@ -6,15 +6,18 @@ with source as (
     select * from {{ source('lol_raw', 'raw_participants') }}
 ),
 
+-- Referencia stg_matches (no la fuente raw) para heredar el filtro de remakes:
+-- las partidas <5min quedan afuera acá y de paso de todo lo que depende de esta CTE.
 matches as (
     select match_id, game_duration_s
-    from {{ source('lol_raw', 'raw_matches') }}
+    from {{ ref('stg_matches') }}
 ),
 
 cleaned as (
     select
         p.match_id,
         p.puuid,
+        p.participant_id,
         p.is_me,
         p.summoner_name,
         p.riot_id_name,

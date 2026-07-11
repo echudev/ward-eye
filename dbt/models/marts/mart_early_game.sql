@@ -4,28 +4,14 @@
 -- Esta tabla es clave para detectar problemas de laning phase.
 
 with my_games as (
-    select match_id, puuid, team_id, team_position, champion_name, win
+    select match_id, puuid, participant_id, team_id, team_position, champion_name, win
     from {{ ref('stg_participants') }}
     where is_me = true
 ),
 
--- Participante ID del jugador en cada partida
--- (el timeline usa participant_id numérico, no puuid)
-my_participant_ids as (
-    select
-        p.match_id,
-        p.puuid,
-        -- dlt asigna el participant_id según el orden en la lista de participantes
-        -- lo reconstruimos buscando el registro en raw_participants
-        row_number() over (
-            partition by p.match_id
-            order by p.puuid
-        ) as participant_id   -- aproximación; ajustar si hay discrepancias
-    from {{ ref('stg_participants') }} p
-    inner join my_games mg using (match_id)
-),
-
 -- Frames del jugador en early game
+-- (el timeline usa participant_id numérico, no puuid: filtramos por el
+-- participant_id real del jugador, tomado directo de la Riot API)
 my_frames as (
     select
         f.match_id,
@@ -36,9 +22,9 @@ my_frames as (
         f.level,
         f.game_phase
     from {{ ref('stg_timeline_frames') }} f
-    inner join my_games mg using (match_id)
-    -- Filtramos aproximando al participant_id del jugador
-    -- (refinable una vez que tengamos datos reales y podamos validar)
+    inner join my_games mg
+        on f.match_id = mg.match_id
+        and f.participant_id = mg.participant_id
     where f.timestamp_min <= 20
 ),
 
@@ -61,15 +47,20 @@ snapshots as (
     group by match_id
 ),
 
--- Kills y muertes en early game (antes del min 15)
+-- Kills y muertes del jugador en early game (antes del min 15).
+-- killer_id/victim_id/participant_id se comparan contra SU participant_id:
+-- de lo contrario se cuentan los kills/deaths de las 10 personas de la partida.
 early_events as (
     select
         e.match_id,
-        count(case when e.event_type = 'CHAMPION_KILL' and e.killer_id is not null
+        count(case when e.event_type = 'CHAMPION_KILL' and e.killer_id = mg.participant_id
                         and e.timestamp_min <= 15 then 1 end) as early_kills,
-        count(case when e.event_type = 'CHAMPION_KILL' and e.victim_id is not null
+        count(case when e.event_type = 'CHAMPION_KILL' and e.victim_id = mg.participant_id
                         and e.timestamp_min <= 15 then 1 end) as early_deaths,
-        count(case when e.event_type = 'WARD_PLACED'
+        -- ward_type = 'UNDEFINED' es ruido conocido del timeline de Riot
+        -- (pings de visión de campamentos, no wards reales) — se descarta.
+        count(case when e.event_type = 'WARD_PLACED' and e.participant_id = mg.participant_id
+                        and e.ward_type != 'UNDEFINED'
                         and e.timestamp_min <= 15 then 1 end) as early_wards
     from {{ ref('stg_timeline_events') }} e
     inner join my_games mg using (match_id)

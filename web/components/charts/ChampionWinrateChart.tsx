@@ -22,7 +22,7 @@ export default function ChampionWinrateChart({
         formatter: (p: unknown) => {
           const d = p as { name: string; value: number; dataIndex: number };
           const c = rows[d.dataIndex];
-          return `${d.name}<br/>WR: ${d.value}% (${c.wins}W / ${c.losses}L)<br/>KDA: ${c.avg_kda} · CS/min: ${c.avg_cs_per_min}`;
+          return `${d.name}<br/>WR: ${d.value.toFixed(2)}% (${c.wins}W / ${c.losses}L)<br/>KDA: ${c.avg_kda.toFixed(2)} · CS/min: ${c.avg_cs_per_min.toFixed(2)}`;
         },
       },
       xAxis: valueAxis("Winrate %", { min: 0, max: 100 }),

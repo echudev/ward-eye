@@ -17,11 +17,11 @@ async function querySummary(run: Run): Promise<Summary | null> {
     select
       count(*)::int                                   as total_games,
       sum(case when win then 1 else 0 end)::int       as wins,
-      round(avg(case when win then 1.0 else 0.0 end) * 100, 1)::float as winrate_pct,
-      round(avg(kda_ratio), 2)::float                 as avg_kda,
-      round(avg(cs_per_min), 2)::float                as avg_cs_per_min,
-      round(avg(vision_per_min), 2)::float            as avg_vision_per_min,
-      round(avg(damage_per_min), 0)::float            as avg_damage_per_min
+      round(avg(case when win then 1.0 else 0.0 end) * 100, 1)::double as winrate_pct,
+      round(avg(kda_ratio), 2)::double                 as avg_kda,
+      round(avg(cs_per_min), 2)::double                as avg_cs_per_min,
+      round(avg(vision_per_min), 2)::double            as avg_vision_per_min,
+      round(avg(damage_per_min), 0)::double            as avg_damage_per_min
     from ${MARTS}.mart_match_performance
   `);
   const s = rows[0];
@@ -43,18 +43,18 @@ async function queryMatchPerformance(
       champion_name,
       team_position,
       win,
-      game_duration_min::float              as game_duration_min,
+      game_duration_min::double              as game_duration_min,
       kills::int as kills, deaths::int as deaths, assists::int as assists,
-      kda_ratio::float                      as kda_ratio,
+      kda_ratio::double                      as kda_ratio,
       total_cs::int                         as total_cs,
-      cs_per_min::float                     as cs_per_min,
+      cs_per_min::double                     as cs_per_min,
       vision_score::int                     as vision_score,
-      vision_per_min::float                 as vision_per_min,
-      damage_per_min::float                 as damage_per_min,
-      damage_share::float                   as damage_share,
-      kill_participation::float             as kill_participation,
-      gold_per_min::float                   as gold_per_min,
-      gold_share::float                     as gold_share,
+      vision_per_min::double                 as vision_per_min,
+      damage_per_min::double                 as damage_per_min,
+      damage_share::double                   as damage_share,
+      kill_participation::double             as kill_participation,
+      gold_per_min::double                   as gold_per_min,
+      gold_share::double                     as gold_share,
       control_wards_bought::int             as control_wards_bought,
       total_damage_taken::int               as total_damage_taken,
       solo_kills::int                       as solo_kills,
@@ -83,19 +83,19 @@ async function queryChampionStats(
       games_played::int                     as games_played,
       wins::int                             as wins,
       losses::int                           as losses,
-      winrate_pct::float                    as winrate_pct,
+      winrate_pct::double                    as winrate_pct,
       main_position,
-      avg_kda::float                        as avg_kda,
-      avg_kills::float                      as avg_kills,
-      avg_deaths::float                     as avg_deaths,
-      avg_assists::float                    as avg_assists,
-      avg_cs_per_min::float                 as avg_cs_per_min,
-      avg_vision_per_min::float             as avg_vision_per_min,
-      avg_damage_per_min::float             as avg_damage_per_min,
-      avg_gold_per_min::float               as avg_gold_per_min,
-      recent_winrate_pct::float             as recent_winrate_pct,
-      winrate_trend::float                  as winrate_trend,
-      kda_trend::float                      as kda_trend
+      avg_kda::double                        as avg_kda,
+      avg_kills::double                      as avg_kills,
+      avg_deaths::double                     as avg_deaths,
+      avg_assists::double                    as avg_assists,
+      avg_cs_per_min::double                 as avg_cs_per_min,
+      avg_vision_per_min::double             as avg_vision_per_min,
+      avg_damage_per_min::double             as avg_damage_per_min,
+      avg_gold_per_min::double               as avg_gold_per_min,
+      recent_winrate_pct::double             as recent_winrate_pct,
+      winrate_trend::double                  as winrate_trend,
+      kda_trend::double                      as kda_trend
     from ${MARTS}.mart_champion_stats
     order by games_played desc
     limit ?
@@ -114,11 +114,11 @@ async function queryEarlyGame(run: Run, limit = 30): Promise<EarlyGame[]> {
       e.team_position,
       e.win,
       m.game_start_at::text                 as game_start_at,
-      e.cs_at_10::float                     as cs_at_10,
-      e.gold_at_10::float                   as gold_at_10,
-      e.gold_at_15::float                   as gold_at_15,
-      e.cs_per_min_at_10::float             as cs_per_min_at_10,
-      e.cs_per_min_at_15::float             as cs_per_min_at_15,
+      e.cs_at_10::double                     as cs_at_10,
+      e.gold_at_10::double                   as gold_at_10,
+      e.gold_at_15::double                   as gold_at_15,
+      e.cs_per_min_at_10::double             as cs_per_min_at_10,
+      e.cs_per_min_at_15::double             as cs_per_min_at_15,
       e.early_kills::int                    as early_kills,
       e.early_deaths::int                   as early_deaths,
       e.early_wards::int                    as early_wards
@@ -140,11 +140,11 @@ async function queryPlayerTrends(run: Run): Promise<PlayerTrend[]> {
       queue_name,
       games::int                            as games,
       wins::int                             as wins,
-      winrate_pct::float                    as winrate_pct,
-      avg_kda::float                        as avg_kda,
-      avg_cs_per_min::float                 as avg_cs_per_min,
-      avg_vision_per_min::float             as avg_vision_per_min,
-      avg_damage_per_min::float             as avg_damage_per_min
+      winrate_pct::double                    as winrate_pct,
+      avg_kda::double                        as avg_kda,
+      avg_cs_per_min::double                 as avg_cs_per_min,
+      avg_vision_per_min::double             as avg_vision_per_min,
+      avg_damage_per_min::double             as avg_damage_per_min
     from ${MARTS}.mart_player_trends
     order by week_start asc, queue_id
   `);

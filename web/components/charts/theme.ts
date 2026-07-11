@@ -34,12 +34,20 @@ export const baseOption: EChartsOption = {
   legend: { textStyle: { color: MUTED }, top: 8 },
 };
 
+/** Recorta a 2 decimales cualquier valor numérico mostrado en el tooltip. */
+function roundTooltipValue(value: unknown): string {
+  if (typeof value === "number") return Number(value.toFixed(2)).toString();
+  if (Array.isArray(value)) return value.map(roundTooltipValue).join(", ");
+  return String(value);
+}
+
 export function tooltip(trigger: "axis" | "item" = "item") {
   return {
     trigger,
     backgroundColor: "#141416",
     borderColor: AXIS_LINE,
     textStyle: { color: TEXT },
+    valueFormatter: roundTooltipValue,
   };
 }
 

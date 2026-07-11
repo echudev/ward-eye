@@ -86,13 +86,13 @@ select
     -- Shares relativos al equipo
     round(
         mg.total_damage_dealt_to_champions::numeric / nullif(tt.team_damage, 0),
-    3)                                           as damage_share,
+    2)                                           as damage_share,
     round(
         mg.gold_earned::numeric / nullif(tt.team_gold, 0),
-    3)                                           as gold_share,
+    2)                                           as gold_share,
     round(
         (mg.kills + mg.assists)::numeric / nullif(tt.team_kills, 0),
-    3)                                           as kill_participation,
+    2)                                           as kill_participation,
 
     -- Oro
     mg.gold_earned,

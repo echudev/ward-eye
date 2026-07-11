@@ -26,13 +26,27 @@ function dominantQueue(trends: PlayerTrend[]): PlayerTrend[] {
   return trends.filter((t) => t.queue_id === best);
 }
 
+type TooltipParam = { dataIndex: number; marker: string; seriesName: string; value: number };
+
 export default function TrendsChart({ trends }: { trends: PlayerTrend[] }) {
   const option = useMemo<EChartsOption>(() => {
     const rows = dominantQueue(trends);
     return {
       ...baseOption,
       color: PALETTE,
-      tooltip: tooltip("axis"),
+      tooltip: {
+        ...tooltip("axis"),
+        formatter: (params: unknown) => {
+          const arr = params as TooltipParam[];
+          if (!arr.length) return "";
+          const r = rows[arr[0].dataIndex];
+          const lines = arr.map(
+            (p) =>
+              `${p.marker}${p.seriesName}: ${p.value.toFixed(2)}${p.seriesName === "Winrate %" ? "%" : ""}`,
+          );
+          return [r.week_start, ...lines, `Partidas: ${r.games}`].join("<br/>");
+        },
+      },
       legend: { data: ["Winrate %", "KDA"], textStyle: { color: MUTED }, top: 8 },
       xAxis: { ...categoryAxis(), data: rows.map((r) => r.week_start) },
       yAxis: [
@@ -46,6 +60,13 @@ export default function TrendsChart({ trends }: { trends: PlayerTrend[] }) {
           yAxisIndex: 0,
           data: rows.map((r) => r.winrate_pct),
           itemStyle: { color: WIN, borderRadius: [3, 3, 0, 0] },
+          label: {
+            show: true,
+            position: "top",
+            color: MUTED,
+            fontSize: 10,
+            formatter: (p: { dataIndex: number }) => `${rows[p.dataIndex].games}g`,
+          },
         },
         {
           name: "KDA",

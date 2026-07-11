@@ -32,13 +32,13 @@ weekly as (
 
         -- Daño
         round(avg(damage_per_min), 0)               as avg_damage_per_min,
-        round(avg(damage_share), 3)                 as avg_damage_share,
+        round(avg(damage_share), 2)                 as avg_damage_share,
 
         -- Oro
         round(avg(gold_per_min), 0)                 as avg_gold_per_min,
 
         -- Participación
-        round(avg(kill_participation), 3)           as avg_kill_participation,
+        round(avg(kill_participation), 2)           as avg_kill_participation,
 
         -- Campeón más jugado esa semana (mode() nativo de DuckDB)
         mode(champion_name) as top_champion,

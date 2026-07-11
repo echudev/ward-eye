@@ -36,7 +36,7 @@ export function MatchesTable({ matches }: { matches: MatchPerformance[] }) {
               <td className="py-2 pr-3">{m.team_position ?? "—"}</td>
               <td className="py-2 pr-3">
                 {m.kills}/{m.deaths}/{m.assists}{" "}
-                <span className="text-muted/60">({m.kda_ratio})</span>
+                <span className="text-muted/60">({m.kda_ratio.toFixed(2)})</span>
               </td>
               <td className="py-2 pr-3 text-right">
                 {m.cs_per_min.toFixed(1)}

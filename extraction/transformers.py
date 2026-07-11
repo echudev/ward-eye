@@ -43,6 +43,7 @@ def parse_participants(raw: dict, my_puuid: str) -> Generator[dict, None, None]:
         yield {
             "match_id":              match_id,
             "puuid":                 p["puuid"],
+            "participant_id":        p["participantId"],
             "is_me":                 p["puuid"] == my_puuid,
             "summoner_name":         p.get("summonerName", ""),
             "riot_id_name":          p.get("riotIdGameName", ""),

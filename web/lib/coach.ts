@@ -219,6 +219,8 @@ Referencias soloQ aproximadas por rol:
 
 Usá la comparación Victorias vs Derrotas para identificar QUÉ separa tus wins de tus losses: esa es la señal más accionable. Si una métrica es parecida en V y D, no es el problema.
 
+Si calculás vos algún promedio o ratio a partir de los datos, redondealo SIEMPRE a como máximo 2 decimales antes de citarlo.
+
 Devolvé el análisis en Markdown con EXACTAMENTE estas secciones:
 ## Resumen
 ## Puntos fuertes
