@@ -12,7 +12,6 @@ Puede dispararse manualmente con: python -m flows.daily_pipeline
 import os
 import sys
 import subprocess
-import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
