@@ -3,6 +3,7 @@ import { Card } from "@/components/Card";
 import { Kpis } from "@/components/Kpis";
 import { MatchesTable } from "@/components/MatchesTable";
 import { CoachingPanel } from "@/components/CoachingPanel";
+import { ChampionPicker } from "@/components/ChampionPicker";
 import TrendsChart from "@/components/charts/TrendsChart";
 import TrendsResourcesChart from "@/components/charts/TrendsResourcesChart";
 import KdaTimelineChart from "@/components/charts/KdaTimelineChart";
@@ -13,25 +14,39 @@ import EarlyGameChart from "@/components/charts/EarlyGameChart";
 // Consulta DB en cada request; nunca prerenderizar con datos viejos.
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  const data = await getDashboardData();
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ champion?: string | string[] }>;
+}) {
+  const sp = await searchParams;
+  const championParam = Array.isArray(sp.champion) ? sp.champion[0] : sp.champion;
+  const champion =
+    championParam && championParam.toLowerCase() !== "all" ? championParam : null;
+
+  const data = await getDashboardData(champion);
   const hasData = data.matches.length > 0;
 
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-        <header className="mb-8 border-b border-line pb-5">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-3xl font-bold tracking-tight text-primary-glow">
-              WardEye
-            </h1>
-            <span className="hidden text-[11px] uppercase tracking-[0.25em] text-secondary sm:inline">
-              analytics &amp; coaching
-            </span>
+        <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
+          <div>
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-3xl font-bold tracking-tight text-primary-glow">
+                WardEye
+              </h1>
+              <span className="hidden text-[11px] uppercase tracking-[0.25em] text-secondary sm:inline">
+                analytics &amp; coaching
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-muted">
+              Dashboard de partidas de League of Legends · coaching automático
+            </p>
           </div>
-          <p className="mt-2 text-sm text-muted">
-            Dashboard de partidas de League of Legends · coaching automático
-          </p>
+          {data.championList.length > 0 && (
+            <ChampionPicker champions={data.championList} selected={champion} />
+          )}
         </header>
 
         {data.error && (
@@ -50,7 +65,14 @@ export default async function Home() {
           </div>
         )}
 
-        {!data.error && !hasData && (
+        {!data.error && !hasData && champion && (
+          <div className="surface-card mb-6 rounded-lg p-4 text-sm text-muted">
+            No hay partidas registradas con {champion}. Probá con otro
+            campeón o volvé a &quot;Todos los campeones&quot;.
+          </div>
+        )}
+
+        {!data.error && !hasData && !champion && (
           <div className="surface-card mb-6 rounded-lg p-4 text-sm text-muted">
             No hay partidas en los marts todavía. Corré el pipeline (dlt + dbt)
             para poblarlos.
@@ -64,7 +86,7 @@ export default async function Home() {
             title="Coaching"
             subtitle="Análisis de tus partidas recientes vía LLM (OpenAI-compatible)"
           >
-            <CoachingPanel />
+            <CoachingPanel key={champion ?? "all"} champion={champion} />
           </Card>
         </div>
 

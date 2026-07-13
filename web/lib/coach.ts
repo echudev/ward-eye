@@ -62,6 +62,7 @@ export type CoachInput = {
   champions: ChampionStat[];
   earlyGame: EarlyGame[];
   trends: PlayerTrend[];
+  champion?: string | null; // filtro de campeón activo, si lo hay
 };
 
 export type CoachResult = {
@@ -184,13 +185,18 @@ function buildPrompt({
   champions,
   earlyGame,
   trends,
+  champion,
 }: CoachInput): string {
   const summaryLine = summary
     ? `Global: ${summary.total_games} partidas, WR ${summary.winrate_pct}%, KDA ${summary.avg_kda}, CS/min ${summary.avg_cs_per_min}, Vis/min ${summary.avg_vision_per_min}, Dmg/min ${Math.round(summary.avg_damage_per_min)}`
     : "Sin resumen global disponible.";
+  const filterLine = champion
+    ? `Filtro activo: SOLO partidas con ${champion}. Todo el análisis (resumen, fortalezas, áreas de mejora, objetivos) debe ser específico de este campeón.`
+    : null;
 
   return [
     roleHeader(matches),
+    ...(filterLine ? [filterLine] : []),
     summaryLine,
     "",
     ...winLossBlock(matches, earlyGame),

@@ -74,7 +74,7 @@ function Markdown({ text }: { text: string }) {
   return <>{out}</>;
 }
 
-export function CoachingPanel() {
+export function CoachingPanel({ champion = null }: { champion?: string | null }) {
   const [provider, setProvider] = useState<Provider>("groq");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<string | null>(null);
@@ -90,7 +90,7 @@ export function CoachingPanel() {
       const res = await fetch("/api/coaching", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, champion }),
       });
       const data: CoachResponse = await res.json();
       if (!res.ok || data.error) {
@@ -131,6 +131,9 @@ export function CoachingPanel() {
         </button>
         {model && <span className="text-xs text-muted">modelo: {model}</span>}
       </div>
+      <p className="mt-2 text-xs text-muted">
+        {champion ? `Analizando solo partidas con ${champion}.` : "Analizando todos los campeones."}
+      </p>
 
       {error && (
         <p className="mt-3 rounded-lg border border-danger/50 bg-danger/10 p-3 text-sm text-fg">

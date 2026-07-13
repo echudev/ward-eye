@@ -171,6 +171,7 @@ export async function downloadReportPdf({
       );
     }
     const profile: string[] = [];
+    if (meta.champion) profile.push(`Campeón: ${meta.champion}`);
     if (meta.mainRole) profile.push(`Rol principal: ${meta.mainRole}`);
     if (meta.winratePct != null) profile.push(`Winrate: ${meta.winratePct}%`);
     if (profile.length) drawKeyValue("Perfil:  ", profile.join("   ·   "));

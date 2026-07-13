@@ -12,7 +12,11 @@ function isProvider(value: unknown): value is Provider {
 export const dynamic = "force-dynamic";
 
 /** Metadata de contexto para el encabezado del informe / PDF. */
-function buildMeta(summary: Summary | null, matches: MatchPerformance[]): CoachMeta {
+function buildMeta(
+  summary: Summary | null,
+  matches: MatchPerformance[],
+  champion: string | null,
+): CoachMeta {
   const name = process.env.SUMMONER_NAME?.trim();
   const tag = process.env.SUMMONER_TAG?.trim();
   const player = name ? (tag ? `${name}#${tag}` : name) : null;
@@ -39,6 +43,7 @@ function buildMeta(summary: Summary | null, matches: MatchPerformance[]): CoachM
     player,
     region,
     mainRole,
+    champion,
     totalGames: summary?.total_games ?? null,
     analyzedGames: matches.length,
     dateFrom: dates[0] ?? null,
@@ -51,15 +56,17 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null);
     const provider: Provider = isProvider(body?.provider) ? body.provider : "groq";
+    const champion: string | null =
+      typeof body?.champion === "string" && body.champion.trim() ? body.champion : null;
 
     const { summary, matches, champions, earlyGame, trends } =
-      await getCoachingData();
+      await getCoachingData(champion);
 
     const result = await generateCoaching(
-      { summary, matches, champions, earlyGame, trends },
+      { summary, matches, champions, earlyGame, trends, champion },
       provider,
     );
-    const meta = buildMeta(summary, matches);
+    const meta = buildMeta(summary, matches, champion);
     return NextResponse.json({ ...result, meta });
   } catch (err) {
     const message =

@@ -1,6 +1,7 @@
 import "server-only";
 import { withRun, type Run } from "./db";
 import type {
+  ChampionOption,
   ChampionStat,
   DashboardData,
   EarlyGame,
@@ -11,9 +12,21 @@ import type {
 
 const MARTS = "lol_marts";
 
-/** Resumen global sobre todas las partidas (para las KPI cards). */
-async function querySummary(run: Run): Promise<Summary | null> {
-  const rows = await run<Summary>(`
+/** Normaliza el filtro de campeón: "" / "all" / undefined cuentan como "sin filtro". */
+function normalizeChampion(champion?: string | null): string | null {
+  const c = champion?.trim();
+  return c && c.toLowerCase() !== "all" ? c : null;
+}
+
+/** Resumen global (para las KPI cards), opcionalmente acotado a un campeón. */
+async function querySummary(
+  run: Run,
+  champion?: string | null,
+): Promise<Summary | null> {
+  const where = champion ? "where champion_name = ?" : "";
+  const params = champion ? [champion] : [];
+  const rows = await run<Summary>(
+    `
     select
       count(*)::int                                   as total_games,
       sum(case when win then 1 else 0 end)::int       as wins,
@@ -23,16 +36,22 @@ async function querySummary(run: Run): Promise<Summary | null> {
       round(avg(vision_per_min), 2)::double            as avg_vision_per_min,
       round(avg(damage_per_min), 0)::double            as avg_damage_per_min
     from ${MARTS}.mart_match_performance
-  `);
+    ${where}
+  `,
+    params,
+  );
   const s = rows[0];
   return s && s.total_games > 0 ? s : null;
 }
 
-/** Últimas N partidas (mart central). */
+/** Últimas N partidas (mart central), opcionalmente acotadas a un campeón. */
 async function queryMatchPerformance(
   run: Run,
   limit = 30,
+  champion?: string | null,
 ): Promise<MatchPerformance[]> {
+  const where = champion ? "where champion_name = ?" : "";
+  const params = champion ? [champion, limit] : [limit];
   return run<MatchPerformance>(
     `
     select
@@ -64,18 +83,22 @@ async function queryMatchPerformance(
       first_blood_kill,
       first_tower_kill
     from ${MARTS}.mart_match_performance
+    ${where}
     order by game_start_at desc
     limit ?
   `,
-    [limit],
+    params,
   );
 }
 
-/** Stats agregadas por campeón (solo ranked, según el mart). */
+/** Stats agregadas por campeón (solo ranked, según el mart); opcionalmente 1 sola fila. */
 async function queryChampionStats(
   run: Run,
   limit = 15,
+  champion?: string | null,
 ): Promise<ChampionStat[]> {
+  const where = champion ? "where champion_name = ?" : "";
+  const params = champion ? [champion, limit] : [limit];
   return run<ChampionStat>(
     `
     select
@@ -97,15 +120,22 @@ async function queryChampionStats(
       winrate_trend::double                  as winrate_trend,
       kda_trend::double                      as kda_trend
     from ${MARTS}.mart_champion_stats
+    ${where}
     order by games_played desc
     limit ?
   `,
-    [limit],
+    params,
   );
 }
 
 /** Early game de las últimas N partidas, ordenado cronológicamente. */
-async function queryEarlyGame(run: Run, limit = 30): Promise<EarlyGame[]> {
+async function queryEarlyGame(
+  run: Run,
+  limit = 30,
+  champion?: string | null,
+): Promise<EarlyGame[]> {
+  const where = champion ? "where e.champion_name = ?" : "";
+  const params = champion ? [champion, limit] : [limit];
   return run<EarlyGame>(
     `
     select
@@ -124,46 +154,113 @@ async function queryEarlyGame(run: Run, limit = 30): Promise<EarlyGame[]> {
       e.early_wards::int                    as early_wards
     from ${MARTS}.mart_early_game e
     left join ${MARTS}.mart_match_performance m using (match_id)
+    ${where}
     order by m.game_start_at desc nulls last
     limit ?
   `,
-    [limit],
+    params,
   );
 }
 
-/** Tendencias semanales (ranked), de la más vieja a la más nueva. */
-async function queryPlayerTrends(run: Run): Promise<PlayerTrend[]> {
-  return run<PlayerTrend>(`
+/**
+ * Tendencias semanales (ranked), de la más vieja a la más nueva.
+ * Sin filtro usa el mart precalculado (`mart_player_trends`, agregado sobre
+ * todos los campeones). Con un campeón puntual, ese agregado no sirve —
+ * se recalcula al vuelo desde `mart_match_performance` con el mismo criterio
+ * (solo ranked, agrupado por semana) para que el gráfico de tendencia siga
+ * siendo comparable.
+ */
+async function queryPlayerTrends(
+  run: Run,
+  champion?: string | null,
+): Promise<PlayerTrend[]> {
+  if (!champion) {
+    return run<PlayerTrend>(`
+      select
+        week_start::text                      as week_start,
+        queue_id::int                         as queue_id,
+        queue_name,
+        games::int                            as games,
+        wins::int                             as wins,
+        winrate_pct::double                    as winrate_pct,
+        avg_kda::double                        as avg_kda,
+        avg_cs_per_min::double                 as avg_cs_per_min,
+        avg_vision_per_min::double             as avg_vision_per_min,
+        avg_damage_per_min::double             as avg_damage_per_min
+      from ${MARTS}.mart_player_trends
+      order by week_start asc, queue_id
+    `);
+  }
+  return run<PlayerTrend>(
+    `
+    with weekly as (
+      select
+        date_trunc('week', game_start_at)::date::text          as week_start,
+        queue_id::int                                          as queue_id,
+        count(*)::int                                          as games,
+        sum(case when win then 1 else 0 end)::int              as wins,
+        round(avg(case when win then 1.0 else 0.0 end) * 100, 1)::double as winrate_pct,
+        round(avg(kda_ratio), 2)::double                        as avg_kda,
+        round(avg(cs_per_min), 2)::double                       as avg_cs_per_min,
+        round(avg(vision_per_min), 2)::double                   as avg_vision_per_min,
+        round(avg(damage_per_min), 0)::double                   as avg_damage_per_min
+      from ${MARTS}.mart_match_performance
+      where queue_id in (420, 440) and champion_name = ?
+      group by 1, 2
+    )
     select
-      week_start::text                      as week_start,
-      queue_id::int                         as queue_id,
-      queue_name,
-      games::int                            as games,
-      wins::int                             as wins,
-      winrate_pct::double                    as winrate_pct,
-      avg_kda::double                        as avg_kda,
-      avg_cs_per_min::double                 as avg_cs_per_min,
-      avg_vision_per_min::double             as avg_vision_per_min,
-      avg_damage_per_min::double             as avg_damage_per_min
-    from ${MARTS}.mart_player_trends
+      week_start,
+      queue_id,
+      case queue_id when 420 then 'Ranked Solo' else 'Ranked Flex' end as queue_name,
+      games, wins, winrate_pct, avg_kda, avg_cs_per_min, avg_vision_per_min, avg_damage_per_min
+    from weekly
     order by week_start asc, queue_id
+  `,
+    [champion],
+  );
+}
+
+/** Lista de todos los campeones jugados (todas las colas), para el picker. */
+async function queryChampionList(run: Run): Promise<ChampionOption[]> {
+  return run<ChampionOption>(`
+    select
+      champion_name,
+      count(*)::int as games_played
+    from ${MARTS}.mart_match_performance
+    group by champion_name
+    order by games_played desc, champion_name asc
   `);
 }
 
-/** Carga todo el dashboard en paralelo; degrada con elegancia si la DB falla. */
-export async function getDashboardData(): Promise<DashboardData> {
+/**
+ * Carga todo el dashboard en paralelo; degrada con elegancia si la DB falla.
+ * `champion` (opcional) acota todas las métricas a un solo campeón; "" / "all"
+ * / undefined equivalen a "todos" (ver `normalizeChampion`).
+ */
+export async function getDashboardData(
+  championFilter?: string | null,
+): Promise<DashboardData> {
+  const champion = normalizeChampion(championFilter);
   try {
     return await withRun(async (run) => {
-      const [summary, matches, champions, earlyGame, trends] = await Promise.all(
-        [
-          querySummary(run),
-          queryMatchPerformance(run, 30),
-          queryChampionStats(run, 15),
-          queryEarlyGame(run, 30),
-          queryPlayerTrends(run),
-        ],
-      );
-      return { summary, matches, champions, earlyGame, trends, error: null };
+      const [summary, matches, champions, earlyGame, trends, championList] =
+        await Promise.all([
+          querySummary(run, champion),
+          queryMatchPerformance(run, 30, champion),
+          queryChampionStats(run, 15, champion),
+          queryEarlyGame(run, 30, champion),
+          queryPlayerTrends(run, champion),
+          queryChampionList(run),
+        ]);
+      return {
+        summary,
+        matches,
+        champions,
+        earlyGame,
+        trends,
+        championList,
+        error: null,
+      };
     });
   } catch (err) {
     const message =
@@ -174,26 +271,28 @@ export async function getDashboardData(): Promise<DashboardData> {
       champions: [],
       earlyGame: [],
       trends: [],
+      championList: [],
       error: message,
     };
   }
 }
 
 /** Datos para el endpoint de coaching (límites más chicos que el dashboard). */
-export async function getCoachingData(): Promise<{
+export async function getCoachingData(championFilter?: string | null): Promise<{
   summary: Summary | null;
   matches: MatchPerformance[];
   champions: ChampionStat[];
   earlyGame: EarlyGame[];
   trends: PlayerTrend[];
 }> {
+  const champion = normalizeChampion(championFilter);
   return withRun(async (run) => {
     const [summary, matches, champions, earlyGame, trends] = await Promise.all([
-      querySummary(run),
-      queryMatchPerformance(run, 20),
-      queryChampionStats(run, 10),
-      queryEarlyGame(run, 20),
-      queryPlayerTrends(run),
+      querySummary(run, champion),
+      queryMatchPerformance(run, 20, champion),
+      queryChampionStats(run, 10, champion),
+      queryEarlyGame(run, 20, champion),
+      queryPlayerTrends(run, champion),
     ]);
     return { summary, matches, champions, earlyGame, trends };
   });

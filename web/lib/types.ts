@@ -98,10 +98,17 @@ export type Summary = {
   avg_damage_per_min: number;
 };
 
+/** Opción del picker de campeón: nombre + volumen para ordenar/mostrar. */
+export type ChampionOption = {
+  champion_name: string;
+  games_played: number;
+};
+
 export type CoachMeta = {
   player: string | null; // "Nombre#tag"
   region: string | null;
   mainRole: string | null;
+  champion: string | null; // campeón filtrado, si el picker tiene uno activo
   totalGames: number | null;
   analyzedGames: number;
   dateFrom: string | null; // YYYY-MM-DD
@@ -115,5 +122,6 @@ export type DashboardData = {
   champions: ChampionStat[];
   earlyGame: EarlyGame[];
   trends: PlayerTrend[];
+  championList: ChampionOption[];
   error: string | null;
 };
