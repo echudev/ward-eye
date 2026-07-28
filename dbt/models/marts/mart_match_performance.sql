@@ -69,7 +69,7 @@ select
     -- Farm
     mg.total_cs,
     mg.cs_per_min,
-    mg.cs_first_10min,           -- proxy early CS (minions primeros 10min)
+    mg.lane_minions_first_10min, -- conteo de súbditos de línea, NO un ratio
 
     -- Visión
     mg.vision_score,

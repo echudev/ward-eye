@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: mart_jungle_matchup
+    description: >
+      Una fila por partida de jungla, con el jungla rival como contraparte.
+      Diferenciales de campamentos y oro en los hitos 10/15, visión filtrada a
+      wards reales, y muertes desagregadas entre duelo ("solo") y gank.
+    columns:
+      - name: match_id
+        description: Grain del modelo — una fila por partida.
+        tests: [unique, not_null]
+      - name: my_champion
+        tests: [not_null]
+      - name: enemy_champion
+        tests: [not_null]
+      - name: had_early_solo_death
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+
+  - name: mart_objective_control
+    description: >
+      Una fila por partida con los objetivos neutrales atribuidos a cada bando.
+      Los NULL en first_*_mine significan que ese objetivo nunca cayó en la
+      partida, no que se perdió.
+    columns:
+      - name: match_id
+        tests: [unique, not_null]
+      - name: dragon_diff
+        tests: [not_null]
+
+  - name: mart_early_game
+    columns:
+      - name: match_id
+        tests: [unique, not_null]

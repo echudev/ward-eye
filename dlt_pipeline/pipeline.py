@@ -88,6 +88,11 @@ def matches_resource(client: RiotClient, puuid: str, match_ids: list[str]):
     name="raw_participants",
     write_disposition="merge",
     primary_key=["match_id", "puuid"],
+    # Declarado explícito para que dlt materialice la columna en el destino
+    # aunque una corrida no traiga partidas nuevas. Reemplaza a `cs_per_minute`,
+    # que era el mismo dato con un nombre que mentía (ver transformers.py y
+    # scripts/migrate_lane_minions_rename.py).
+    columns={"lane_minions_first_10min": {"data_type": "bigint", "nullable": True}},
 )
 def participants_resource(client: RiotClient, puuid: str, match_ids: list[str]):
     for match_id in match_ids:

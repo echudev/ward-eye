@@ -75,6 +75,49 @@ export type EarlyGame = {
   early_wards: number;
 };
 
+/**
+ * Una partida de jungla contra el jungla rival. Es el único mart que compara
+ * contra un oponente: el resto sólo tiene al jugador, así que las métricas
+ * absolutas ahí no dicen si el déficit existe.
+ * Los `*_diff_at_*` son null si la partida no llegó al hito.
+ */
+export type JungleMatchup = {
+  match_id: string;
+  my_champion: string;
+  enemy_champion: string;
+  win: boolean;
+  game_start_at: string | null;
+  camp_diff_at_10: number | null;
+  camp_diff_at_15: number | null;
+  gold_diff_at_10: number | null;
+  gold_diff_at_15: number | null;
+  my_wards: number;
+  enemy_jungler_wards: number;
+  ward_diff: number;
+  deaths_total: number;
+  deaths_solo: number;
+  deaths_solo_pre15: number;
+  deaths_solo_vs_jungler: number;
+  had_early_solo_death: boolean;
+};
+
+/** Objetivos neutrales por bando. `first_*_mine` es null si nunca cayó. */
+export type ObjectiveControl = {
+  match_id: string;
+  win: boolean;
+  game_start_at: string | null;
+  first_dragon_mine: boolean | null;
+  first_dragon_min: number | null;
+  first_herald_mine: boolean | null;
+  first_baron_mine: boolean | null;
+  dragons_mine: number;
+  dragons_enemy: number;
+  grubs_mine: number;
+  grubs_enemy: number;
+  dragon_diff: number;
+  grub_diff: number;
+};
+
 export type PlayerTrend = {
   week_start: string; // YYYY-MM-DD
   queue_id: number;
@@ -121,6 +164,8 @@ export type DashboardData = {
   matches: MatchPerformance[];
   champions: ChampionStat[];
   earlyGame: EarlyGame[];
+  jungleMatchup: JungleMatchup[];
+  objectives: ObjectiveControl[];
   trends: PlayerTrend[];
   championList: ChampionOption[];
   error: string | null;

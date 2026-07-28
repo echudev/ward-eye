@@ -10,6 +10,8 @@ import KdaTimelineChart from "@/components/charts/KdaTimelineChart";
 import ImpactScatterChart from "@/components/charts/ImpactScatterChart";
 import ChampionWinrateChart from "@/components/charts/ChampionWinrateChart";
 import EarlyGameChart from "@/components/charts/EarlyGameChart";
+import JungleMatchupChart from "@/components/charts/JungleMatchupChart";
+import ObjectivesChart from "@/components/charts/ObjectivesChart";
 
 // Consulta DB en cada request; nunca prerenderizar con datos viejos.
 export const dynamic = "force-dynamic";
@@ -124,6 +126,25 @@ export default async function Home({
               subtitle="CS/min a min 10 y 15, muertes ≤15m"
             >
               <EarlyGameChart earlyGame={data.earlyGame} />
+            </Card>
+            {data.objectives.length > 0 && (
+              <Card
+                title="Control de objetivos"
+                subtitle="Winrate según quién se llevó cada objetivo"
+              >
+                <ObjectivesChart objectives={data.objectives} />
+              </Card>
+            )}
+          </div>
+        )}
+
+        {data.jungleMatchup.length > 0 && (
+          <div className="mt-6">
+            <Card
+              title="Duelo vs el jungla rival"
+              subtitle="Diferencial de campamentos al minuto 15 — arriba de 0 vas ganando el duelo"
+            >
+              <JungleMatchupChart matchup={data.jungleMatchup} />
             </Card>
           </div>
         )}

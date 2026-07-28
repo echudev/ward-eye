@@ -59,11 +59,20 @@ export async function POST(request: Request) {
     const champion: string | null =
       typeof body?.champion === "string" && body.champion.trim() ? body.champion : null;
 
-    const { summary, matches, champions, earlyGame, trends } =
+    const { summary, matches, champions, earlyGame, jungleMatchup, objectives, trends } =
       await getCoachingData(champion);
 
     const result = await generateCoaching(
-      { summary, matches, champions, earlyGame, trends, champion },
+      {
+        summary,
+        matches,
+        champions,
+        earlyGame,
+        jungleMatchup,
+        objectives,
+        trends,
+        champion,
+      },
       provider,
     );
     const meta = buildMeta(summary, matches, champion);

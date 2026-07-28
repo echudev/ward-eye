@@ -5,7 +5,9 @@ import type {
   ChampionStat,
   DashboardData,
   EarlyGame,
+  JungleMatchup,
   MatchPerformance,
+  ObjectiveControl,
   PlayerTrend,
   Summary,
 } from "./types";
@@ -220,6 +222,81 @@ async function queryPlayerTrends(
   );
 }
 
+/**
+ * Duelo contra el jungla rival, últimas N partidas de jungla.
+ * Ordena por `mart_match_performance` porque el mart de matchup no tiene fecha.
+ */
+async function queryJungleMatchup(
+  run: Run,
+  limit = 30,
+  champion?: string | null,
+): Promise<JungleMatchup[]> {
+  const where = champion ? "where j.my_champion = ?" : "";
+  const params = champion ? [champion, limit] : [limit];
+  return run<JungleMatchup>(
+    `
+    select
+      j.match_id,
+      j.my_champion,
+      j.enemy_champion,
+      j.win,
+      m.game_start_at::text                 as game_start_at,
+      j.camp_diff_at_10::int                as camp_diff_at_10,
+      j.camp_diff_at_15::int                as camp_diff_at_15,
+      j.gold_diff_at_10::int                as gold_diff_at_10,
+      j.gold_diff_at_15::int                as gold_diff_at_15,
+      j.my_wards::int                       as my_wards,
+      j.enemy_jungler_wards::int            as enemy_jungler_wards,
+      j.ward_diff::int                      as ward_diff,
+      j.deaths_total::int                   as deaths_total,
+      j.deaths_solo::int                    as deaths_solo,
+      j.deaths_solo_pre15::int              as deaths_solo_pre15,
+      j.deaths_solo_vs_jungler::int         as deaths_solo_vs_jungler,
+      j.had_early_solo_death
+    from ${MARTS}.mart_jungle_matchup j
+    left join ${MARTS}.mart_match_performance m using (match_id)
+    ${where}
+    order by m.game_start_at desc nulls last
+    limit ?
+  `,
+    params,
+  );
+}
+
+/** Objetivos neutrales por bando, últimas N partidas. */
+async function queryObjectives(
+  run: Run,
+  limit = 30,
+  champion?: string | null,
+): Promise<ObjectiveControl[]> {
+  const where = champion ? "where m.champion_name = ?" : "";
+  const params = champion ? [champion, limit] : [limit];
+  return run<ObjectiveControl>(
+    `
+    select
+      o.match_id,
+      o.win,
+      m.game_start_at::text                 as game_start_at,
+      o.first_dragon_mine,
+      o.first_dragon_min::double            as first_dragon_min,
+      o.first_herald_mine,
+      o.first_baron_mine,
+      o.dragons_mine::int                   as dragons_mine,
+      o.dragons_enemy::int                  as dragons_enemy,
+      o.grubs_mine::int                     as grubs_mine,
+      o.grubs_enemy::int                    as grubs_enemy,
+      o.dragon_diff::int                    as dragon_diff,
+      o.grub_diff::int                      as grub_diff
+    from ${MARTS}.mart_objective_control o
+    left join ${MARTS}.mart_match_performance m using (match_id)
+    ${where}
+    order by m.game_start_at desc nulls last
+    limit ?
+  `,
+    params,
+  );
+}
+
 /** Lista de todos los campeones jugados (todas las colas), para el picker. */
 async function queryChampionList(run: Run): Promise<ChampionOption[]> {
   return run<ChampionOption>(`
@@ -243,20 +320,32 @@ export async function getDashboardData(
   const champion = normalizeChampion(championFilter);
   try {
     return await withRun(async (run) => {
-      const [summary, matches, champions, earlyGame, trends, championList] =
-        await Promise.all([
-          querySummary(run, champion),
-          queryMatchPerformance(run, 30, champion),
-          queryChampionStats(run, 15, champion),
-          queryEarlyGame(run, 30, champion),
-          queryPlayerTrends(run, champion),
-          queryChampionList(run),
-        ]);
+      const [
+        summary,
+        matches,
+        champions,
+        earlyGame,
+        jungleMatchup,
+        objectives,
+        trends,
+        championList,
+      ] = await Promise.all([
+        querySummary(run, champion),
+        queryMatchPerformance(run, 30, champion),
+        queryChampionStats(run, 15, champion),
+        queryEarlyGame(run, 30, champion),
+        queryJungleMatchup(run, 30, champion),
+        queryObjectives(run, 30, champion),
+        queryPlayerTrends(run, champion),
+        queryChampionList(run),
+      ]);
       return {
         summary,
         matches,
         champions,
         earlyGame,
+        jungleMatchup,
+        objectives,
         trends,
         championList,
         error: null,
@@ -270,6 +359,8 @@ export async function getDashboardData(
       matches: [],
       champions: [],
       earlyGame: [],
+      jungleMatchup: [],
+      objectives: [],
       trends: [],
       championList: [],
       error: message,
@@ -283,17 +374,22 @@ export async function getCoachingData(championFilter?: string | null): Promise<{
   matches: MatchPerformance[];
   champions: ChampionStat[];
   earlyGame: EarlyGame[];
+  jungleMatchup: JungleMatchup[];
+  objectives: ObjectiveControl[];
   trends: PlayerTrend[];
 }> {
   const champion = normalizeChampion(championFilter);
   return withRun(async (run) => {
-    const [summary, matches, champions, earlyGame, trends] = await Promise.all([
-      querySummary(run, champion),
-      queryMatchPerformance(run, 20, champion),
-      queryChampionStats(run, 10, champion),
-      queryEarlyGame(run, 20, champion),
-      queryPlayerTrends(run, champion),
-    ]);
-    return { summary, matches, champions, earlyGame, trends };
+    const [summary, matches, champions, earlyGame, jungleMatchup, objectives, trends] =
+      await Promise.all([
+        querySummary(run, champion),
+        queryMatchPerformance(run, 20, champion),
+        queryChampionStats(run, 10, champion),
+        queryEarlyGame(run, 20, champion),
+        queryJungleMatchup(run, 20, champion),
+        queryObjectives(run, 20, champion),
+        queryPlayerTrends(run, champion),
+      ]);
+    return { summary, matches, champions, earlyGame, jungleMatchup, objectives, trends };
   });
 }

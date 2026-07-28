@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: int_frame_snapshots
+    description: >
+      Snapshot de recursos por participante en los hitos 5/10/15/20/25, resuelto
+      por frame más cercano. Los frames de Riot no caen en minutos enteros
+      (drift acumulado), así que ni la igualdad exacta ni un max() por rango
+      sirven para leerlos.
+    columns:
+      - name: match_id
+        tests: [not_null]
+      - name: participant_id
+        tests: [not_null]
+      - name: minute_mark
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [5, 10, 15, 20, 25]
+                quote: false
+      - name: actual_frame_min
+        description: Minuto real del frame elegido; puede diferir del hito hasta 1.5.
+        tests: [not_null]

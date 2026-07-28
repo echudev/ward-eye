@@ -1,7 +1,11 @@
 -- mart_early_game.sql
 -- Análisis del early game usando los frames del timeline.
--- Compara al jugador vs sus oponentes de línea en los primeros 15 minutos.
 -- Esta tabla es clave para detectar problemas de laning phase.
+--
+-- Los snapshots @10 y @15 salen de int_frame_snapshots (frame más cercano al
+-- hito). Antes se resolvían con `max(case when timestamp_min between 14 and 16)`,
+-- que se quedaba con el frame más tardío de la ventana en vez del más cercano
+-- e inflaba el snapshot ~1 minuto de recursos.
 
 with my_games as (
     select match_id, puuid, participant_id, team_id, team_position, champion_name, win
@@ -9,41 +13,44 @@ with my_games as (
     where is_me = true
 ),
 
--- Frames del jugador en early game
+-- Snapshots del jugador en los hitos 10 y 15.
 -- (el timeline usa participant_id numérico, no puuid: filtramos por el
 -- participant_id real del jugador, tomado directo de la Riot API)
-my_frames as (
+my_snapshots as (
     select
-        f.match_id,
-        f.timestamp_min,
-        f.total_gold,
-        f.xp,
-        f.total_cs_at_frame,
-        f.level,
-        f.game_phase
-    from {{ ref('stg_timeline_frames') }} f
+        s.match_id,
+        s.minute_mark,
+        s.actual_frame_min,
+        s.total_gold,
+        s.xp,
+        s.level,
+        s.total_cs_at_frame
+    from {{ ref('int_frame_snapshots') }} s
     inner join my_games mg
-        on f.match_id = mg.match_id
-        and f.participant_id = mg.participant_id
-    where f.timestamp_min <= 20
+        on s.match_id = mg.match_id
+        and s.participant_id = mg.participant_id
+    where s.minute_mark in (10, 15)
 ),
 
--- Snapshot en minuto 10 y 15 para cada partida del jugador
 snapshots as (
     select
         match_id,
 
-        max(case when timestamp_min between 9  and 11 then total_gold         end) as gold_at_10,
-        max(case when timestamp_min between 9  and 11 then total_cs_at_frame  end) as cs_at_10,
-        max(case when timestamp_min between 9  and 11 then xp                 end) as xp_at_10,
-        max(case when timestamp_min between 9  and 11 then level              end) as level_at_10,
+        max(case when minute_mark = 10 then total_gold        end) as gold_at_10,
+        max(case when minute_mark = 10 then total_cs_at_frame end) as cs_at_10,
+        max(case when minute_mark = 10 then xp                end) as xp_at_10,
+        max(case when minute_mark = 10 then level             end) as level_at_10,
+        max(case when minute_mark = 10 then actual_frame_min  end) as frame_min_at_10,
 
-        max(case when timestamp_min between 14 and 16 then total_gold         end) as gold_at_15,
-        max(case when timestamp_min between 14 and 16 then total_cs_at_frame  end) as cs_at_15,
-        max(case when timestamp_min between 14 and 16 then xp                 end) as xp_at_15,
-        max(case when timestamp_min between 14 and 16 then level              end) as level_at_15
+        max(case when minute_mark = 15 then total_gold        end) as gold_at_15,
+        max(case when minute_mark = 15 then total_cs_at_frame end) as cs_at_15,
+        max(case when minute_mark = 15 then xp                end) as xp_at_15,
+        max(case when minute_mark = 15 then level             end) as level_at_15,
+        max(case when minute_mark = 15 then actual_frame_min  end) as frame_min_at_15
 
-    from my_frames
+    -- max() acá es seguro: int_frame_snapshots tiene una sola fila por
+    -- (match_id, participant_id, minute_mark), así que es un pivot, no una elección
+    from my_snapshots
     group by match_id
 ),
 
@@ -57,10 +64,8 @@ early_events as (
                         and e.timestamp_min <= 15 then 1 end) as early_kills,
         count(case when e.event_type = 'CHAMPION_KILL' and e.victim_id = mg.participant_id
                         and e.timestamp_min <= 15 then 1 end) as early_deaths,
-        -- ward_type = 'UNDEFINED' es ruido conocido del timeline de Riot
-        -- (pings de visión de campamentos, no wards reales) — se descarta.
-        count(case when e.event_type = 'WARD_PLACED' and e.participant_id = mg.participant_id
-                        and e.ward_type != 'UNDEFINED'
+        -- is_real_ward descarta trampas y objetos de campeón (ver stg_timeline_events)
+        count(case when e.is_real_ward and e.participant_id = mg.participant_id
                         and e.timestamp_min <= 15 then 1 end) as early_wards
     from {{ ref('stg_timeline_events') }} e
     inner join my_games mg using (match_id)
@@ -83,9 +88,11 @@ select
     s.xp_at_15,
     s.level_at_15,
 
-    -- CS por minuto early
-    round(s.cs_at_10::numeric / 10, 1)     as cs_per_min_at_10,
-    round(s.cs_at_15::numeric / 15, 1)     as cs_per_min_at_15,
+    -- CS por minuto early.
+    -- Dividimos por el minuto real del frame, no por el hito nominal: el frame
+    -- que representa el "minuto 15" puede estar en 14.94 o 15.01.
+    round(s.cs_at_10::numeric / nullif(s.frame_min_at_10, 0), 1)   as cs_per_min_at_10,
+    round(s.cs_at_15::numeric / nullif(s.frame_min_at_15, 0), 1)   as cs_per_min_at_15,
 
     -- Eventos early
     coalesce(ee.early_kills,  0)            as early_kills,
