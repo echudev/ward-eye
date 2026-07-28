@@ -115,7 +115,18 @@ def timeline_frames_resource(client: RiotClient, match_ids: list[str]):
 @dlt.resource(
     name="raw_timeline_events",
     write_disposition="merge",
-    primary_key=["match_id", "timestamp_ms", "event_type", "participant_id"],
+    # merge_key, NO primary_key. Un evento del timeline no tiene clave natural:
+    # `participant_id` es NULL en CHAMPION_KILL, BUILDING_KILL y
+    # OBJECTIVE_BOUNTY_PRESTART, y con eso adentro de una primary_key el merge
+    # de dlt fallaba de las dos puntas:
+    #   - dentro de una carga deduplica con `partition by`, que agrupa los NULL
+    #     como iguales y se come eventos simultáneos distintos;
+    #   - entre cargas borra con `=`, y `participant_id = NULL` nunca matchea,
+    #     así que las filas viejas sobrevivían y los duplicados se acumulaban
+    #     (323 filas de más en 50 partidas antes de la limpieza).
+    # Con merge_key el grano es la partida: re-ingestar una borra sus eventos y
+    # los reinserta enteros. Idempotente y sin dedup por fila.
+    merge_key="match_id",
     columns={"participant_id": {"nullable": True, "data_type": "bigint"}},
 )
 def timeline_events_resource(client: RiotClient, match_ids: list[str]):
