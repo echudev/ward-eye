@@ -4,7 +4,9 @@ import type { Provider } from "./providers";
 import type {
   ChampionStat,
   EarlyGame,
+  JungleMatchup,
   MatchPerformance,
+  ObjectiveControl,
   PlayerTrend,
   Summary,
 } from "./types";
@@ -61,6 +63,8 @@ export type CoachInput = {
   matches: MatchPerformance[];
   champions: ChampionStat[];
   earlyGame: EarlyGame[];
+  jungleMatchup: JungleMatchup[];
+  objectives: ObjectiveControl[];
   trends: PlayerTrend[];
   champion?: string | null; // filtro de campeón activo, si lo hay
 };
@@ -82,6 +86,11 @@ function mode<T>(items: T[]): T | undefined {
   let bestN = -1;
   for (const [k, n] of counts) if (n > bestN) [best, bestN] = [k, n];
   return best;
+}
+
+/** Agrega una línea en blanco después del bloque, salvo que esté vacío. */
+function withBlank(block: string[]): string[] {
+  return block.length ? [...block, ""] : [];
 }
 
 /** Se queda con la cola (queue) con más partidas para no duplicar semanas. */
@@ -135,6 +144,54 @@ function earlyGameBlock(earlyGame: EarlyGame[]): string[] {
   ];
 }
 
+/**
+ * Duelo contra el jungla rival. Es el bloque con más señal para un jungla: las
+ * métricas absolutas pueden verse normales mientras el diferencial contra el
+ * rival de esa misma partida es malo.
+ */
+function jungleMatchupBlock(rows: JungleMatchup[]): string[] {
+  if (rows.length === 0) return [];
+  const w = rows.filter((r) => r.win);
+  const l = rows.filter((r) => !r.win);
+  const cmp = (label: string, pick: (r: JungleMatchup) => number, d = 1) =>
+    `- ${label}: Victorias ${avg(w.map(pick)).toFixed(d)} | Derrotas ${avg(l.map(pick)).toFixed(d)}`;
+  const solo = rows.filter((r) => r.had_early_solo_death);
+  const soloWr = solo.length
+    ? Math.round((solo.filter((r) => r.win).length / solo.length) * 100)
+    : null;
+
+  return [
+    `Duelo vs el jungla rival (n: ${rows.length}; valores negativos = vas por detrás):`,
+    `- Campamentos @10: ${avg(rows.map((r) => r.camp_diff_at_10 ?? NaN)).toFixed(1)} | @15: ${avg(rows.map((r) => r.camp_diff_at_15 ?? NaN)).toFixed(1)}`,
+    `- Oro @10: ${avg(rows.map((r) => r.gold_diff_at_10 ?? NaN)).toFixed(0)} | @15: ${avg(rows.map((r) => r.gold_diff_at_15 ?? NaN)).toFixed(0)}`,
+    `- Wards colocadas: vos ${avg(rows.map((r) => r.my_wards)).toFixed(1)} | jungla rival ${avg(rows.map((r) => r.enemy_jungler_wards)).toFixed(1)}`,
+    `- Muertes en duelo (sin asistencias del rival): ${avg(rows.map((r) => r.deaths_solo)).toFixed(1)} de ${avg(rows.map((r) => r.deaths_total)).toFixed(1)} totales; ${avg(rows.map((r) => r.deaths_solo_vs_jungler)).toFixed(1)} de ellas contra el jungla rival`,
+    cmp("Campamentos @15 (V vs D)", (r) => r.camp_diff_at_15 ?? NaN),
+    cmp("Oro @15 (V vs D)", (r) => r.gold_diff_at_15 ?? NaN, 0),
+    ...(soloWr !== null
+      ? [
+          `- Partidas con al menos una muerte en duelo antes del 15: ${solo.length}/${rows.length}, winrate ${soloWr}%`,
+        ]
+      : []),
+  ];
+}
+
+/** Objetivos neutrales por bando: el corte con más señal del dataset. */
+function objectivesBlock(rows: ObjectiveControl[]): string[] {
+  if (rows.length === 0) return [];
+  const wr = (subset: ObjectiveControl[]) =>
+    subset.length
+      ? `${Math.round((subset.filter((r) => r.win).length / subset.length) * 100)}% (${subset.length}g)`
+      : "sin datos";
+  return [
+    "Control de objetivos (winrate según quién se lo llevó):",
+    `- Primer dragón a favor: ${wr(rows.filter((r) => r.first_dragon_mine === true))} | en contra: ${wr(rows.filter((r) => r.first_dragon_mine === false))}`,
+    `- Primer heraldo a favor: ${wr(rows.filter((r) => r.first_herald_mine === true))} | en contra: ${wr(rows.filter((r) => r.first_herald_mine === false))}`,
+    `- Dragones por partida: vos ${avg(rows.map((r) => r.dragons_mine)).toFixed(1)} | rival ${avg(rows.map((r) => r.dragons_enemy)).toFixed(1)}`,
+    `- Larvas del vacío (grubs): vos ${avg(rows.map((r) => r.grubs_mine)).toFixed(1)} | rival ${avg(rows.map((r) => r.grubs_enemy)).toFixed(1)}`,
+  ];
+}
+
 function trendsBlock(trends: PlayerTrend[]): string[] {
   const rows = dominantQueue(trends).slice(-6); // últimas 6 semanas
   if (rows.length === 0) return ["Tendencia semanal: sin datos."];
@@ -184,6 +241,8 @@ function buildPrompt({
   matches,
   champions,
   earlyGame,
+  jungleMatchup,
+  objectives,
   trends,
   champion,
 }: CoachInput): string {
@@ -203,6 +262,8 @@ function buildPrompt({
     "",
     ...earlyGameBlock(earlyGame),
     "",
+    ...withBlank(jungleMatchupBlock(jungleMatchup)),
+    ...withBlank(objectivesBlock(objectives)),
     ...trendsBlock(trends),
     "",
     "Partidas recientes (más nuevas primero):",
@@ -224,6 +285,10 @@ Referencias soloQ aproximadas por rol:
 - SUPPORT: CS/min bajo es normal (~1-2), Vis/min >2 muy bueno, control wards alto.
 
 Usá la comparación Victorias vs Derrotas para identificar QUÉ separa tus wins de tus losses: esa es la señal más accionable. Si una métrica es parecida en V y D, no es el problema.
+
+Si hay un bloque "Duelo vs el jungla rival", PRIORIZALO sobre las métricas absolutas. Un CS/min que parece normal puede esconder un déficit grande contra el jungla rival de esa misma partida, y lo que se puede corregir es el diferencial, no el número aislado. Los valores negativos significan que el jugador va por detrás. Distinguí las muertes en duelo (sin asistencias: decisiones propias de pelear) de las muertes en gank (posicionamiento y visión) — se corrigen distinto.
+
+Si hay un bloque "Control de objetivos", usalo para hablar de prioridades de ruta y tempo, no como una estadística suelta.
 
 Si calculás vos algún promedio o ratio a partir de los datos, redondealo SIEMPRE a como máximo 2 decimales antes de citarlo.
 
