@@ -90,7 +90,36 @@ Cursor manual con **única fuente de verdad = la propia tabla DuckDB** (`read_in
 - `MAX_MATCHES_PER_RUN=100` acota memoria/API por corrida; un backlog mayor se drena (más viejas primero) en corridas siguientes, sin pérdida.
 - `RiotClient.get_match` / `get_match_timeline` están **memoizados por instancia**: cada partida y cada timeline se descargan una sola vez aunque los consuman varios recursos (antes había doble fetch).
 - Primera corrida (bootstrap): trae las `BOOTSTRAP_MATCH_COUNT=50` más recientes. Día sin partidas: `new_ids` vacío → solo se refresca `raw_summoners`.
-- Idempotencia garantizada por `write_disposition=merge` + `primary_key` en cada recurso.
+- Idempotencia garantizada por `write_disposition=merge` en cada recurso. `raw_matches`, `raw_participants`, `raw_timeline_frames` y `raw_summoners` usan `primary_key` (tienen clave natural y sin NULLs). **`raw_timeline_events` usa `merge_key="match_id"`, no `primary_key`** — ver abajo.
+
+### `raw_timeline_events`: por qué `merge_key` y no `primary_key`
+
+Un evento del timeline **no tiene clave natural**. `participant_id` es NULL en
+`CHAMPION_KILL`, `BUILDING_KILL` y `OBJECTIVE_BOUNTY_PRESTART`, y tenerlo dentro
+de una `primary_key` rompía el merge de dlt por las dos puntas:
+
+- **Dentro de una carga**: el delete-insert deduplica con `partition by`, que
+  agrupa los NULL como iguales → se comía eventos simultáneos genuinamente
+  distintos (dos ítems diferentes comprados en el mismo milisegundo).
+- **Entre cargas**: borra con `=`, y `participant_id = NULL` nunca matchea → las
+  filas viejas sobrevivían y los duplicados se acumulaban.
+
+Con `merge_key="match_id"` el grano es la partida: re-ingestar una borra sus
+eventos y los reinserta enteros, sin dedup por fila.
+
+> **Si alguna vez tocás hints de dlt**: se **fusionan, no se reemplazan**. Sacar
+> `primary_key` del decorador no lo saca del schema guardado (ni del local en
+> `~/.dlt/pipelines/lol_coach/schemas/`, ni del blob en `lol_raw._dlt_version`),
+> y el delete-insert lo sigue usando. Hay que limpiarlo explícitamente — lo hace
+> `scripts/migrate_timeline_events_merge_key.py`.
+
+**Limitación conocida**: las partidas cargadas antes de este arreglo arrastran
+eventos que el dedup viejo borró en su carga original (~4% estimado, sobre todo
+`CHAMPION_KILL` e `ITEM_PURCHASED`). No se puede reconstruir desde la base: hay
+que re-ingestar el timeline desde la API. Se decidió no hacerlo. Consecuencia
+práctica: los conteos de muertes y objetivos de partidas viejas están levemente
+subestimados, y `LA2_1583646824` (re-ingestada al validar el arreglo) es la
+única con datos completos. Si algún día se re-ingesta todo, esos números suben.
 
 ### Flujo en `flows/daily_pipeline.py`
 ```
