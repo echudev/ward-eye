@@ -13,6 +13,9 @@ models:
     staging:
       +schema: lol_staging
       +materialized: view
+    intermediate:
+      +schema: lol_intermediate
+      +materialized: table
     marts:
       +schema: lol_marts
       +materialized: table

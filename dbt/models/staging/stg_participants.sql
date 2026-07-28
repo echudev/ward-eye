@@ -96,7 +96,9 @@ cleaned as (
         p.kda                                           as kda_challenge,
         p.damage_per_minute                             as damage_per_min_challenge,
         p.gold_per_minute                               as gold_per_min_challenge,
-        p.cs_per_minute                                 as cs_first_10min,
+        -- Conteo de súbditos de LÍNEA en los primeros 10 min, no un ratio:
+        -- para un jungla son 0-5. No lo compares contra cs_per_min de arriba.
+        p.lane_minions_first_10min,
 
         -- Items y runas (JSON, se expanden en marts si se necesita)
         p.items_json,

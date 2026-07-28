@@ -99,7 +99,12 @@ def parse_participants(raw: dict, my_puuid: str) -> Generator[dict, None, None]:
             "kda":                   challenges.get("kda", 0),
             "damage_per_minute":     challenges.get("damagePerMinute", 0),
             "gold_per_minute":       challenges.get("goldPerMinute", 0),
-            "cs_per_minute":         challenges.get("laneMinionsFirst10Minutes", 0),  # proxy early game
+            # OJO: NO es un ratio de CS por minuto. Es el conteo de súbditos de
+            # LÍNEA en los primeros 10 min (para un jungla son 0-5, no ~6). Se
+            # llamaba "cs_per_minute", lo que invitaba a leerlo como ratio y a
+            # compararlo contra cs_per_min (que sí es un ratio, recalculado en
+            # staging sobre la duración real de la partida).
+            "lane_minions_first_10min": challenges.get("laneMinionsFirst10Minutes", 0),
             "solo_kills":            challenges.get("soloKills", 0),
             "multikills":            p.get("largestMultiKill", 0),
             "killing_sprees":        p.get("largestKillingSpree", 0),

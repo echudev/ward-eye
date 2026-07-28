@@ -110,7 +110,53 @@ Un archivo `.duckdb` admite **un solo proceso escritor** a la vez; varios lector
 ### Schemas en DuckDB (archivo único `warddata.duckdb`)
 - `lol_raw.*` — tablas raw (dlt): `raw_matches`, `raw_participants`, `raw_timeline_frames`, `raw_timeline_events`, `raw_summoners`
 - `lol_staging.*` — vistas (dbt staging): limpian y calculan métricas derivadas (cs/min, vision/min, damage/min)
-- `lol_marts.*` — tablas materializadas (dbt marts): `mart_match_performance`, `mart_champion_stats`, `mart_early_game`, `mart_player_trends`
+- `lol_intermediate.*` — tablas (dbt intermediate): `int_frame_snapshots`
+- `lol_marts.*` — tablas materializadas (dbt marts): `mart_match_performance`, `mart_champion_stats`, `mart_early_game`, `mart_player_trends`, `mart_jungle_matchup`
+
+### Dos trampas del timeline de Riot (ya resueltas en staging/intermediate)
+
+Ambas producían métricas silenciosamente incorrectas. **No reimplementes estos
+filtros en un mart nuevo — usá los modelos que ya los encapsulan.**
+
+- **`WARD_PLACED` no significa "ward"**. Incluye trampas y objetos de campeón
+  (cajas de Shaco, hongos de Teemo, trampas de Jhin/Nidalee) bajo `ward_type`
+  `UNDEFINED` / `TEEMO_MUSHROOM` — ~64% de los eventos, con partidas de 930
+  "wards". El filtro canónico es `stg_timeline_events.is_real_ward`, validado
+  contra `raw_participants.wards_placed` (fuente independiente, Match-V5):
+  1166/1170 participantes coinciden exacto.
+- **Los frames no caen en minutos enteros**. Riot los emite cada ~60s con drift
+  acumulado (5.00, 13.01, 14.01, 15.01, 20.01…). La igualdad exacta
+  (`timestamp_min = 15`) pierde ~2/3 de las partidas; un rango con `max()`
+  (`between 14 and 16`) se queda con el frame *más tardío*, no el más cercano.
+  Los snapshots @5/@10/@15/@20/@25 salen de `int_frame_snapshots`, que resuelve
+  el frame más cercano una sola vez y descarta hitos a más de 1.5 min (partidas
+  que terminaron antes).
+
+### Los dos marts relativos
+
+El resto de la capa marts sólo tiene al jugador (1 `puuid`), así que ninguna
+métrica *relativa* se puede calcular ahí — y en jungla casi todo lo que importa
+es relativo. Estos dos son la excepción:
+
+- `mart_jungle_matchup` — una fila por partida de jungla con el jungla enemigo
+  como contraparte: diferenciales de campamentos y oro @10/@15, wards vs wards,
+  y muertes desagregadas entre duelo (`deaths_solo`, sin asistencias) y gank.
+- `mart_objective_control` — una fila por partida con los objetivos neutrales
+  atribuidos a cada bando (primer dragón / heraldo / barón, conteos y
+  diferenciales de dragones y grubs). La atribución sale de unir `killer_id` del
+  evento `ELITE_MONSTER_KILL` contra el `team_id` del participante.
+
+Ambos alimentan el dashboard y el prompt de coaching (ver "Coaching (web)").
+
+### `lane_minions_first_10min` no es un ratio
+
+Se llamaba `cs_per_minute` en raw, lo que invitaba a leerla como un ratio y a
+compararla contra `cs_per_min` (ese sí lo es). Viene de
+`challenges.laneMinionsFirst10Minutes`: **conteo** de súbditos de línea en los
+primeros 10 min, que para un jungla son 0-5. El BIGINT que infirió dlt era el
+tipo correcto, no un truncamiento. El rename está aplicado end-to-end
+(`extraction/transformers.py` → `dlt_pipeline/pipeline.py` → staging → mart);
+`scripts/migrate_lane_minions_rename.py` migró el histórico y es idempotente.
 
 ### Coaching (web)
 El coaching se implementó como **dashboard Next.js en `web/`** (no como `coaching/claude_coach.py`, que nunca se creó). Detalles en `web/README.md` y `web/CLAUDE.md`. Puntos clave:
