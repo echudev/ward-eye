@@ -36,7 +36,7 @@ cleaned as (
         p.assists,
         -- KDA ratio (deaths=0 → perfecto, usamos 1 como denominador mínimo)
         round(
-            (p.kills + p.assists)::numeric / nullif(p.deaths, 0),
+            (p.kills + p.assists)::numeric / greatest(p.deaths, 1),
         2)                                              as kda_ratio,
 
         -- Farm
